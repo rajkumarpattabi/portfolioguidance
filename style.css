@@ -87,7 +87,22 @@ main{flex:1;padding:16px}
 
 /* holdings */
 .hold{display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);
-  border-radius:12px;padding:9px 12px;margin-bottom:7px}
+  border-radius:12px;padding:9px 12px;margin-bottom:7px;cursor:pointer}
+.hold:active{background:var(--card2)}
+
+/* expanded stock detail (~half page) */
+.hold-exp{background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:14px;margin-bottom:7px;
+  min-height:44vh;display:flex;flex-direction:column;cursor:pointer}
+.he-head{display:flex;align-items:baseline;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.he-sym{font-size:18px;font-weight:800}
+.he-sec{font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.he-close{font-size:11px;color:var(--mut);font-weight:600}
+.he-grid{display:flex;flex-direction:column;justify-content:space-around;flex:1;margin-top:4px}
+.he-row{display:flex;justify-content:space-between;align-items:center;padding:8px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+.he-row:last-child{border-bottom:none}
+.he-l{color:var(--mut)}
+.he-v{font-weight:700}
+.he-v.up{color:var(--up)}.he-v.down{color:var(--down)}
 .hold-l{min-width:0;display:flex;flex-direction:column;justify-content:center}
 .hold-top{display:flex;align-items:baseline;gap:7px;min-width:0}
 .hold-sym{font-size:14.5px;font-weight:700;flex:none}

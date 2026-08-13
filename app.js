@@ -25,6 +25,7 @@
     view: 'dash',
     holdSort: 'value',
     holdDir: 'desc',
+    holdExpanded: null,
     calcMode: 'down',
     trimMode: 'value',
     calcSym: null,
@@ -226,24 +227,60 @@
     arr.sort(function (a, b) { return dir * cmp(a, b); });
     updateSortArrows();
 
+    var t = totals();
+    var secInv = {}; bySector().forEach(function (s) { secInv[s.sector] = s.value; });
+    function heRow(label, val, c) {
+      return '<div class="he-row"><span class="he-l">' + label + '</span><span class="he-v' + (c ? ' ' + c : '') + '">' + val + '</span></div>';
+    }
+
     wrap.innerHTML = arr.map(function (h) {
       var sec = sectorOf(h.symbol);
       var cls = h.pnl >= 0 ? 'up' : 'down';
-      return '<div class="hold">' +
+      var dcls = h.day >= 0 ? 'up' : 'down';
+
+      if (state.holdExpanded === h.symbol) {
+        var pw = t.invested ? h.invested / t.invested * 100 : 0;
+        var sw = secInv[sec] ? h.invested / secInv[sec] * 100 : 0;
+        return '<div class="hold-exp" onclick="PG.toggleHold(\'' + esc(h.symbol) + '\')">' +
+          '<div class="he-head">' +
+            '<span class="he-sym">' + esc(h.symbol) + '</span>' +
+            '<span class="he-sec" style="color:' + sectorColor(sec) + '">' + esc(sec) + '</span>' +
+            '<span class="he-close">▲ close</span>' +
+          '</div>' +
+          '<div class="he-grid">' +
+            heRow('Quantity', h.qty) +
+            heRow('Avg cost', money2(h.avg)) +
+            heRow('Market price (LTP)', money2(h.ltp)) +
+            heRow('Invested', money(h.invested)) +
+            heRow('Current value', money(h.value)) +
+            heRow('Overall P&amp;L', signMoney(h.pnl) + ' [' + pct(h.pnlPct) + ']', cls) +
+            heRow("Day's P&amp;L", signMoney(h.day) + ' (' + pct(h.dayPct) + ')', dcls) +
+            heRow('Portfolio weightage', pw.toFixed(1) + '%') +
+            heRow('Weightage in ' + esc(sec), sw.toFixed(1) + '%') +
+          '</div>' +
+        '</div>';
+      }
+
+      return '<div class="hold" onclick="PG.toggleHold(\'' + esc(h.symbol) + '\')">' +
         '<div class="hold-l">' +
           '<div class="hold-top">' +
             '<span class="hold-sym">' + esc(h.symbol) + '</span>' +
-            '<span class="hold-sec" style="color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' + esc(sec) + ' ✎</span>' +
+            '<span class="hold-sec" style="color:' + sectorColor(sec) + '">' + esc(sec) + '</span>' +
           '</div>' +
           '<div class="hold-meta">' + h.qty + ' × ' + money2(h.avg) + '  ·  LTP ' + money2(h.ltp) + '</div>' +
         '</div>' +
         '<div class="hold-r">' +
           '<div class="hold-val">' + money(h.value) + '</div>' +
           '<div class="hold-pnl ' + cls + '">' + signMoney(h.pnl) + ' <em>[' + pct(h.pnlPct) + ']</em></div>' +
-          '<div class="hold-day"><span class="dl">Day</span> <span class="' + (h.day >= 0 ? 'up' : 'down') + '">' + signMoney(h.day) + ' <em>(' + pct(h.dayPct) + ')</em></span></div>' +
+          '<div class="hold-day"><span class="dl">Day</span> <span class="' + dcls + '">' + signMoney(h.day) + ' <em>(' + pct(h.dayPct) + ')</em></span></div>' +
         '</div>' +
       '</div>';
     }).join('');
+  }
+
+  function toggleHold(sym) {
+    state.holdExpanded = (state.holdExpanded === sym) ? null : sym;
+    renderHoldings();
   }
 
   // ---------- calculator ----------
@@ -605,7 +642,7 @@
   // public API
   window.PG = {
     setView: setView, sync: sync, loadDemo: loadDemo,
-    calc: calc, calcPickStock: calcPickStock, toggleSector: toggleSector,
+    calc: calc, calcPickStock: calcPickStock, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet,
     saveAppKey: saveAppKey, exportJson: exportJson
   };
