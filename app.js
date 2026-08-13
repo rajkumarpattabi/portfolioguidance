@@ -47,7 +47,13 @@
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function el(id) { return document.getElementById(id); }
 
-  function sectorOf(sym) { return state.overrides[sym] || SEC.MAP[sym] || 'Unclassified'; }
+  // Zerodha may append an exchange series suffix (e.g. CEREBRAINT-BZ, XYZ-BE).
+  // Strip known series so the base symbol still maps to a sector.
+  var SERIES_RE = /-(EQ|BE|BZ|BL|IL|IQ|SM|ST|GB|GS|GC|N[0-9]{1,2})$/;
+  function baseSymbol(sym) { return sym.replace(SERIES_RE, ''); }
+  function sectorOf(sym) {
+    return state.overrides[sym] || SEC.MAP[sym] || SEC.MAP[baseSymbol(sym)] || 'Unclassified';
+  }
 
   // stable colour per sector (index into palette by position in LIST)
   var PALETTE = ['#34c789', '#4da3ff', '#f5c542', '#a78bfa', '#f472b6', '#22d3ee',

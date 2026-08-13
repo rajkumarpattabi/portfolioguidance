@@ -6,18 +6,17 @@
 window.PG_SECTORS = {
   // sector list (order used for the legend / picker / colours)
   LIST: [
-    "Fin-Banks", "Fin-NBFC", "Insurance", "Info Tech", "IT Hardware", "Pharma",
+    "Finance", "Insurance", "Info Tech", "IT Hardware", "Pharma",
     "FMCG", "Automobiles", "Specialty Chemicals", "Paints", "Metals & Mining",
     "Capital Goods", "Power (Renewable)", "Gold", "Unclassified"
   ],
 
   MAP: {
-    // Fin-Banks
-    "HDFCBANK": "Fin-Banks", "KOTAKBANK": "Fin-Banks", "INDUSINDBK": "Fin-Banks",
-    "IDFCFIRSTB": "Fin-Banks", "SOUTHBANK": "Fin-Banks", "KTKBANK": "Fin-Banks",
-    // Fin-NBFC
-    "BAJFINANCE": "Fin-NBFC", "JIOFIN": "Fin-NBFC", "SBICARD": "Fin-NBFC",
-    "AAVAS": "Fin-NBFC", "MANAPPURAM": "Fin-NBFC", "MUTHOOTFIN": "Fin-NBFC",
+    // Finance (banks + NBFCs)
+    "HDFCBANK": "Finance", "KOTAKBANK": "Finance", "INDUSINDBK": "Finance",
+    "IDFCFIRSTB": "Finance", "SOUTHBANK": "Finance", "KTKBANK": "Finance",
+    "BAJFINANCE": "Finance", "JIOFIN": "Finance", "SBICARD": "Finance",
+    "AAVAS": "Finance", "MANAPPURAM": "Finance", "MUTHOOTFIN": "Finance",
     // Insurance
     "HDFCLIFE": "Insurance",
     // Info Tech
