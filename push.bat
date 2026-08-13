@@ -3,6 +3,9 @@ setlocal
 REM Always run from this script's own folder
 cd /d "%~dp0"
 
+REM Clear any stale git lock (can be left behind by interrupted operations)
+if exist ".git\index.lock" del /f /q ".git\index.lock"
+
 REM First-time setup: create the local repo + point it at GitHub
 IF NOT EXIST ".git" (
   echo First run: initialising git repository...
