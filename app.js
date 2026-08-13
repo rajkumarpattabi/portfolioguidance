@@ -211,7 +211,7 @@
     var arr = state.holdings.map(function (h) { return Object.assign({}, h, enrich(h)); });
     var so = state.holdSort, dir = (state.holdDir === 'asc' ? 1 : -1), cmp;
     if (so === 'alpha') cmp = function (a, b) { return a.symbol < b.symbol ? -1 : (a.symbol > b.symbol ? 1 : 0); };
-    else cmp = function (a, b) { return (a[so] || 0) - (b[so] || 0); };
+    else { var field = (so === 'day') ? 'dayPct' : so; cmp = function (a, b) { return (a[field] || 0) - (b[field] || 0); }; }
     arr.sort(function (a, b) { return dir * cmp(a, b); });
     updateSortArrows();
 
