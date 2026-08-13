@@ -37,6 +37,7 @@
           <span class="dc-label">Total value</span>
           <span class="dc-value" id="donutTotal">—</span>
           <span class="dc-sub" id="donutPnl"></span>
+          <span class="dc-pct" id="donutPct"></span>
         </div>
       </div>
       <h3 class="section-title">Sectoral allocation</h3>
@@ -50,9 +51,11 @@
     <!-- HOLDINGS -->
     <div class="view" id="v-holdings">
       <h3 class="section-title">Holdings <span class="muted" id="holdCount"></span></h3>
-      <div class="seg" id="holdSort">
+      <div class="seg wide" id="holdSort">
         <button class="seg-btn active" data-sort="value">Value</button>
         <button class="seg-btn" data-sort="pnl">P&amp;L</button>
+        <button class="seg-btn" data-sort="day">Day</button>
+        <button class="seg-btn" data-sort="invested">Invested</button>
         <button class="seg-btn" data-sort="alpha">A–Z</button>
       </div>
       <div id="holdList"></div>

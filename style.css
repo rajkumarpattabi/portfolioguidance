@@ -46,9 +46,11 @@ main{flex:1;padding:16px}
 /* donut */
 .donut-wrap{position:relative;display:flex;justify-content:center;align-items:center;padding:8px 0 4px}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
-.dc-label{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
-.dc-value{font-size:26px;font-weight:800;margin-top:2px}
-.dc-sub{font-size:13px;font-weight:700;margin-top:3px}
+.dc-label{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.dc-value{font-size:23px;font-weight:800;margin-top:2px}
+.dc-sub{font-size:12px;font-weight:700;margin-top:3px}
+.dc-pct{font-size:11px;font-weight:700;margin-top:1px}
+.dc-pct.up{color:var(--up)}.dc-pct.down{color:var(--down)}
 
 /* allocation list */
 .alloc-row{display:grid;grid-template-columns:14px 1fr 64px 46px auto;align-items:center;gap:9px;
@@ -94,6 +96,10 @@ main{flex:1;padding:16px}
 .hold-val{font-size:15px;font-weight:700}
 .hold-pnl{font-size:12px;font-weight:600;margin-top:4px}
 .hold-pnl em{font-style:normal;opacity:.8}
+.hold-day{font-size:11px;font-weight:600;margin-top:3px}
+.hold-day em{font-style:normal;opacity:.8}
+.hold-day .dl{color:var(--mut);font-weight:600;margin-right:3px}
+#holdSort .seg-btn{font-size:11.5px;padding:8px 4px}
 
 /* calculator */
 .fld-label{display:block;font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px}

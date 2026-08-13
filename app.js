@@ -66,8 +66,9 @@
     var invested = h.qty * h.avg;
     var pnl = value - invested;
     var day = (h.close ? (h.ltp - h.close) * h.qty : 0);
+    var dayPct = h.close ? (h.ltp - h.close) / h.close * 100 : 0;
     return { value: value, invested: invested, pnl: pnl, day: day,
-             pnlPct: invested ? pnl / invested * 100 : 0 };
+             pnlPct: invested ? pnl / invested * 100 : 0, dayPct: dayPct };
   }
   function totals() {
     var t = { value: 0, invested: 0, pnl: 0, day: 0 };
@@ -76,6 +77,7 @@
       t.value += e.value; t.invested += e.invested; t.pnl += e.pnl; t.day += e.day;
     });
     t.pnlPct = t.invested ? t.pnl / t.invested * 100 : 0;
+    t.dayPct = (t.value - t.day) ? t.day / (t.value - t.day) * 100 : 0;
     return t;
   }
   function bySector() {
@@ -106,8 +108,8 @@
     bar.innerHTML =
       '<div class="sm-item"><span class="sm-k">Value</span><span class="sm-v">' + money(t.value) + '</span></div>' +
       '<div class="sm-item"><span class="sm-k">Invested</span><span class="sm-v">' + money(t.invested) + '</span></div>' +
-      '<div class="sm-item"><span class="sm-k">P&amp;L</span><span class="sm-v ' + pnlCls + '">' + signMoney(t.pnl) + ' <em>' + pct(t.pnlPct) + '</em></span></div>' +
-      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney(t.day) + '</span></div>';
+      '<div class="sm-item"><span class="sm-k">P&amp;L</span><span class="sm-v ' + pnlCls + '">' + signMoney(t.pnl) + ' <em>[' + pct(t.pnlPct) + ']</em></span></div>' +
+      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney(t.day) + ' <em>(' + pct(t.dayPct) + ')</em></span></div>';
   }
 
   function renderDash() {
@@ -115,9 +117,12 @@
     el('dashEmpty').hidden = has;
     var t = totals();
     el('donutTotal').textContent = has ? money(t.value) : '—';
-    var pe = el('donutPnl');
-    if (has) { pe.textContent = signMoney(t.pnl) + '  ' + pct(t.pnlPct); pe.className = 'dc-sub ' + (t.pnl >= 0 ? 'up' : 'down'); }
-    else pe.textContent = '';
+    var pe = el('donutPnl'), pc = el('donutPct');
+    if (has) {
+      var c = 'dc-sub ' + (t.pnl >= 0 ? 'up' : 'down');
+      pe.textContent = signMoney(t.pnl); pe.className = c;
+      if (pc) { pc.textContent = pct(t.pnlPct); pc.className = 'dc-pct ' + (t.pnl >= 0 ? 'up' : 'down'); }
+    } else { pe.textContent = ''; if (pc) pc.textContent = ''; }
 
     drawDonut(bySector(), t.value);
     renderAlloc(t.value);
@@ -193,8 +198,11 @@
     el('holdEmpty').hidden = has;
     el('holdCount').textContent = has ? '(' + state.holdings.length + ')' : '';
     var arr = state.holdings.map(function (h) { return Object.assign({}, h, enrich(h)); });
-    if (state.holdSort === 'value') arr.sort(function (a, b) { return b.value - a.value; });
-    else if (state.holdSort === 'pnl') arr.sort(function (a, b) { return b.pnl - a.pnl; });
+    var so = state.holdSort;
+    if (so === 'value') arr.sort(function (a, b) { return b.value - a.value; });
+    else if (so === 'pnl') arr.sort(function (a, b) { return b.pnl - a.pnl; });
+    else if (so === 'day') arr.sort(function (a, b) { return b.day - a.day; });
+    else if (so === 'invested') arr.sort(function (a, b) { return b.invested - a.invested; });
     else arr.sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; });
 
     wrap.innerHTML = arr.map(function (h) {
@@ -208,7 +216,8 @@
         '</div>' +
         '<div class="hold-r">' +
           '<div class="hold-val">' + money(h.value) + '</div>' +
-          '<div class="hold-pnl ' + cls + '">' + signMoney(h.pnl) + ' <em>' + pct(h.pnlPct) + '</em></div>' +
+          '<div class="hold-pnl ' + cls + '">' + signMoney(h.pnl) + ' <em>[' + pct(h.pnlPct) + ']</em></div>' +
+          '<div class="hold-day"><span class="dl">Day</span> <span class="' + (h.day >= 0 ? 'up' : 'down') + '">' + signMoney(h.day) + ' <em>(' + pct(h.dayPct) + ')</em></span></div>' +
         '</div>' +
       '</div>';
     }).join('');
