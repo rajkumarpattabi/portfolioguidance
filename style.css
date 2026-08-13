@@ -100,7 +100,7 @@ main{flex:1;padding:16px}
 .hold-day{font-size:10.5px;font-weight:600;margin-top:2px}
 .hold-day em{font-style:normal;opacity:.8}
 .hold-day .dl{color:var(--mut);font-weight:600;margin-right:3px}
-#holdSort .seg-btn{font-size:11.5px;padding:8px 4px}
+#holdSort .seg-btn{font-size:10.5px;padding:8px 3px}
 .sarrow{font-size:10px;font-weight:700}
 
 /* calculator */

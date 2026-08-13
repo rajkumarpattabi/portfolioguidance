@@ -217,6 +217,11 @@
     var arr = state.holdings.map(function (h) { return Object.assign({}, h, enrich(h)); });
     var so = state.holdSort, dir = (state.holdDir === 'asc' ? 1 : -1), cmp;
     if (so === 'alpha') cmp = function (a, b) { return a.symbol < b.symbol ? -1 : (a.symbol > b.symbol ? 1 : 0); };
+    else if (so === 'sector') cmp = function (a, b) {
+      var sa = sectorOf(a.symbol), sb = sectorOf(b.symbol);
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      return a.symbol < b.symbol ? -1 : (a.symbol > b.symbol ? 1 : 0);
+    };
     else { var field = (so === 'day') ? 'dayPct' : so; cmp = function (a, b) { return (a[field] || 0) - (b[field] || 0); }; }
     arr.sort(function (a, b) { return dir * cmp(a, b); });
     updateSortArrows();
@@ -564,7 +569,7 @@
       var b = e.target.closest('.seg-btn'); if (!b) return;
       var key = b.getAttribute('data-sort');
       if (state.holdSort === key) state.holdDir = (state.holdDir === 'desc' ? 'asc' : 'desc');
-      else { state.holdSort = key; state.holdDir = (key === 'alpha' ? 'asc' : 'desc'); }
+      else { state.holdSort = key; state.holdDir = (key === 'alpha' || key === 'sector') ? 'asc' : 'desc'; }
       renderHoldings();
     });
     el('calcMode').addEventListener('click', function (e) {
