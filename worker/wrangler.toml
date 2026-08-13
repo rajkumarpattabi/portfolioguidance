@@ -17,7 +17,7 @@ binding = "SESSION"
 id = "PASTE_KV_NAMESPACE_ID"
 
 # Secrets & the API key are NOT stored in this file (it's committed to a public repo).
-# Set all three once - Cloudflare encrypts them:
+# Set all three once — Cloudflare encrypts them:
 #   npx wrangler secret put KITE_API_KEY        # your Kite api key
 #   npx wrangler secret put KITE_API_SECRET     # your Kite api secret
 #   npx wrangler secret put APP_KEY             # any pass-phrase you invent (typed into the app once)

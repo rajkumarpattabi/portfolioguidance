@@ -26,7 +26,8 @@
     holdSort: 'value',
     calcMode: 'down',
     trimMode: 'value',
-    calcSym: null
+    calcSym: null,
+    expanded: {}
   };
 
   function load(k, dflt) {
@@ -118,21 +119,45 @@
     if (has) { pe.textContent = signMoney(t.pnl) + '  ' + pct(t.pnlPct); pe.className = 'dc-sub ' + (t.pnl >= 0 ? 'up' : 'down'); }
     else pe.textContent = '';
 
-    var segs = bySector();
-    drawDonut(segs, t.value);
+    drawDonut(bySector(), t.value);
+    renderAlloc(t.value);
+  }
 
+  var allocSegs = [];
+  function renderAlloc(total) {
     var list = el('allocList');
-    if (!has) { list.innerHTML = ''; return; }
-    list.innerHTML = segs.map(function (s) {
-      var p = t.value ? s.value / t.value * 100 : 0;
-      return '<div class="alloc-row">' +
-        '<span class="alloc-dot" style="background:' + sectorColor(s.sector) + '"></span>' +
-        '<span class="alloc-name">' + esc(s.sector) + '</span>' +
-        '<span class="alloc-bar"><span style="width:' + p.toFixed(1) + '%;background:' + sectorColor(s.sector) + '"></span></span>' +
-        '<span class="alloc-pct">' + p.toFixed(1) + '%</span>' +
-        '<span class="alloc-val">' + money(s.value) + '</span>' +
-        '</div>';
+    if (!state.holdings.length) { list.innerHTML = ''; allocSegs = []; return; }
+    allocSegs = bySector();
+    list.innerHTML = allocSegs.map(function (s, i) {
+      var p = total ? s.value / total * 100 : 0;
+      var open = !!state.expanded[s.sector];
+      var stocks = holdingsInSector(s.sector).map(function (h) {
+        var w = total ? h.value / total * 100 : 0;
+        return '<div class="sec-stock"><span class="ss-sym">' + esc(h.symbol) + '</span>' +
+          '<span class="ss-wt">' + w.toFixed(1) + '%</span></div>';
+      }).join('');
+      return '<div class="sec-card' + (open ? ' open' : '') + '">' +
+        '<button class="sec-head" type="button" onclick="PG.toggleSector(' + i + ')">' +
+          '<span class="alloc-dot" style="background:' + sectorColor(s.sector) + '"></span>' +
+          '<span class="sh-name">' + esc(s.sector) + '</span>' +
+          '<span class="sh-pct">' + p.toFixed(1) + '%</span>' +
+          '<span class="sh-caret">▾</span>' +
+        '</button>' +
+        '<div class="sec-stocks"' + (open ? '' : ' hidden') + '>' + stocks + '</div>' +
+      '</div>';
     }).join('');
+  }
+
+  function holdingsInSector(sec) {
+    return state.holdings.filter(function (h) { return sectorOf(h.symbol) === sec; })
+      .map(function (h) { return Object.assign({}, h, enrich(h)); })
+      .sort(function (a, b) { return b.value - a.value; });
+  }
+
+  function toggleSector(i) {
+    var s = allocSegs[i]; if (!s) return;
+    state.expanded[s.sector] = !state.expanded[s.sector];
+    renderAlloc(totals().value);
   }
 
   function drawDonut(segs, total) {
@@ -303,8 +328,9 @@
       ? ('Last synced ' + timeAgo(state.meta.lastSync) + (state.meta.source ? ' · ' + state.meta.source : ''))
       : (WORKER ? 'Tap Connect and complete the Kite login (once per day).' : 'Set WORKER_URL in config.js to enable live sync.');
     el('connBtn').textContent = connected ? 'Refresh' : 'Connect';
-    el('syncTxt').textContent = connected ? 'Refresh' : (WORKER ? 'Connect' : 'Demo');
-    el('syncDot').className = 'live' + (connected ? ' on' : '');
+    var rb = el('refreshBtn');
+    if (rb && !rb.classList.contains('loading') && !rb.classList.contains('done')) btnState('idle');
+    var ai = el('appKeyInput'); if (ai) ai.value = localStorage.getItem(K.appkey) || '';
 
     // sector editor
     var se = el('sectorEditor');
@@ -360,30 +386,72 @@
   // ---------- Zerodha sync via Worker ----------
   function appKey() {
     var k = localStorage.getItem(K.appkey);
-    if (!k) {
-      k = prompt('Enter your Worker access code (the APP_KEY you set on the Cloudflare Worker):');
-      if (k) { k = k.trim(); localStorage.setItem(K.appkey, k); }
-    }
-    return k;
+    return k ? k.trim() : '';
+  }
+  function saveAppKey() {
+    var v = el('appKeyInput').value.trim();
+    if (!v) { toast('Enter the access code first.'); return; }
+    localStorage.setItem(K.appkey, v);
+    toast('Access code saved.'); renderSettings();
   }
 
-  function sync() {
-    if (!WORKER) { toast('No Worker set. Loading demo data — set WORKER_URL in config.js for live sync.'); loadDemo(); return; }
-    var key = appKey(); if (!key) { toast('Cancelled — access code needed to reach the Worker.'); return; }
-    toast('Fetching holdings…');
+  function defaultSyncLabel() {
+    var connected = state.meta.source === 'zerodha' && state.meta.lastSync;
+    return connected ? 'Refresh' : (WORKER ? 'Connect' : 'Demo');
+  }
+  function btnState(st) {
+    var b = el('refreshBtn'), ic = el('syncDot'), lb = el('syncTxt');
+    if (!b) return;
+    b.classList.remove('loading', 'done');
+    if (st === 'loading') { b.classList.add('loading'); ic.textContent = '↻'; lb.textContent = 'Syncing…'; }
+    else if (st === 'done') {
+      b.classList.add('done'); ic.textContent = '✓'; lb.textContent = 'Updated';
+      setTimeout(function () { btnState('idle'); }, 1600);
+    } else { ic.textContent = '↻'; lb.textContent = defaultSyncLabel(); }
+  }
+  function ripple(e) {
+    var b = el('refreshBtn');
+    if (!b || !e || e.clientX == null) return;
+    var s = document.createElement('span'), r = b.getBoundingClientRect(), d = Math.max(r.width, r.height);
+    s.className = 'rip';
+    s.style.width = s.style.height = d + 'px';
+    s.style.left = (e.clientX - r.left - d / 2) + 'px';
+    s.style.top = (e.clientY - r.top - d / 2) + 'px';
+    b.appendChild(s); setTimeout(function () { try { s.remove(); } catch (x) {} }, 520);
+  }
+  function fmtTime(ts) {
+    var d = new Date(ts), h = d.getHours(), m = d.getMinutes(), ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12; return h + ':' + (m < 10 ? '0' : '') + m + ' ' + ap;
+  }
+
+  var refreshing = false;
+  function sync(e) {
+    ripple(e);
+    if (!WORKER) { toast('No Worker configured — loading demo data.'); loadDemo(); return; }
+    var key = appKey();
+    if (!key) { toast('Enter your Worker access code in Settings first.'); setView('settings'); return; }
+    if (refreshing) return;
+    refreshing = true; btnState('loading');
     fetch(WORKER + '/holdings?k=' + encodeURIComponent(key), { cache: 'no-store' })
-      .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-      .then(function (res) {
-        if (res.status === 401 && (res.body.needLogin || res.body.error === 'unauthorized')) {
-          if (res.body.needLogin) { startLogin(key); }
-          else { localStorage.removeItem(K.appkey); toast('Access code rejected by the Worker. Try Connect again.'); }
-          return;
-        }
-        if (!res.body || !res.body.holdings) { toast('Unexpected response from Worker.'); return; }
-        applyHoldings(res.body.holdings, 'zerodha');
-        toast('Holdings updated.');
+      .then(function (r) {
+        return r.json().then(function (j) { return { status: r.status, body: j }; })
+          .catch(function () { return { status: r.status, body: null }; });
       })
-      .catch(function (e) { toast('Could not reach the Worker. Check WORKER_URL / connection.'); });
+      .then(function (res) {
+        if (res.status === 401 && res.body && res.body.needLogin) {
+          btnState('idle'); toast('Signing in to Zerodha…');
+          setTimeout(function () { startLogin(key); }, 700); return;
+        }
+        if (res.status === 401) {
+          localStorage.removeItem(K.appkey); btnState('idle');
+          toast('Access code rejected — re-enter it in Settings.'); setView('settings'); return;
+        }
+        if (!res.body || !res.body.holdings) { btnState('idle'); toast('Unexpected response from the Worker.'); return; }
+        applyHoldings(res.body.holdings, 'zerodha');
+        btnState('done'); toast('Holdings updated · ' + fmtTime(Date.now()));
+      })
+      .catch(function () { btnState('idle'); toast('Could not reach the Worker. Check your connection.'); })
+      .then(function () { refreshing = false; });
   }
 
   function startLogin(key) {
@@ -500,9 +568,9 @@
   // public API
   window.PG = {
     setView: setView, sync: sync, loadDemo: loadDemo,
-    calc: calc, calcPickStock: calcPickStock,
+    calc: calc, calcPickStock: calcPickStock, toggleSector: toggleSector,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet,
-    exportJson: exportJson
+    saveAppKey: saveAppKey, exportJson: exportJson
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

@@ -20,9 +20,9 @@
     <div class="h-top">
       <div class="brand"><span class="dot">◑</span> Portfolio</div>
       <div class="h-actions">
-        <div class="sync-chip" id="syncChip" onclick="PG.sync()">
-          <span class="live" id="syncDot"></span><span id="syncTxt">Connect</span>
-        </div>
+        <button class="refresh-btn ripple" id="refreshBtn" type="button" onclick="PG.sync(event)">
+          <span class="ic" id="syncDot">↻</span><span class="lbl" id="syncTxt">Connect</span>
+        </button>
       </div>
     </div>
     <div class="summary" id="summaryBar"></div>
@@ -117,9 +117,17 @@
             <div class="s-title" id="connState">Not connected</div>
             <div class="s-sub" id="connSub">Connect to pull your live holdings.</div>
           </div>
-          <button class="primary-btn" id="connBtn" onclick="PG.sync()">Connect</button>
+          <button class="primary-btn" id="connBtn" onclick="PG.sync(event)">Connect</button>
         </div>
-        <div class="row-between" style="margin-top:12px">
+        <div style="margin-top:14px">
+          <div class="s-title">Worker access code</div>
+          <div class="s-sub" style="margin-bottom:8px">The APP_KEY you set on the Worker (needed to fetch holdings).</div>
+          <div class="backup-row">
+            <input type="password" id="appKeyInput" class="code-input" placeholder="Enter APP_KEY" autocomplete="off">
+            <button class="ghost-btn" onclick="PG.saveAppKey()">Save</button>
+          </div>
+        </div>
+        <div class="row-between" style="margin-top:14px">
           <div><div class="s-title">Demo data</div><div class="s-sub">Explore with sample holdings.</div></div>
           <button class="ghost-btn" onclick="PG.loadDemo()">Load demo</button>
         </div>
