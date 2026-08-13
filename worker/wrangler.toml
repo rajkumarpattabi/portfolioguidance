@@ -5,20 +5,19 @@ name = "portfolioguidance"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
-# Public (non-secret) variables. Edit APP_URL to YOUR GitHub Pages URL and
-# KITE_API_KEY to the api_key from your Kite Connect app.
+# Public (non-secret) variable. Edit APP_URL to YOUR GitHub Pages URL.
 [vars]
 APP_URL = "https://rajkumarpattabi.github.io/portfolioguidance/"
-KITE_API_KEY = "PASTE_YOUR_KITE_API_KEY"
 
 # KV namespace that stores the daily Kite session. Create it once with:
 #   npx wrangler kv namespace create SESSION
-# then paste the returned id below.
+# then paste the returned id below (replace PASTE_KV_NAMESPACE_ID).
 [[kv_namespaces]]
 binding = "SESSION"
 id = "PASTE_KV_NAMESPACE_ID"
 
-# Secrets are NOT stored here. Set them once (they're encrypted by Cloudflare):
-#   npx wrangler secret put KITE_API_SECRET
-#   npx wrangler secret put APP_KEY
-# APP_KEY is any random pass-phrase you choose; you'll type it into the app once.
+# Secrets & the API key are NOT stored in this file (it's committed to a public repo).
+# Set all three once - Cloudflare encrypts them:
+#   npx wrangler secret put KITE_API_KEY        # your Kite api key
+#   npx wrangler secret put KITE_API_SECRET     # your Kite api secret
+#   npx wrangler secret put APP_KEY             # any pass-phrase you invent (typed into the app once)
