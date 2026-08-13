@@ -1,0 +1,22 @@
+# PortfolioGuidance — keep the repo code-only. Holdings never touch Git.
+# App holdings live in the phone's localStorage + your own backups only.
+
+# any exported / local holdings snapshots
+data/
+*-backup.json
+holdings.json
+holdings.csv
+
+# Cloudflare Worker local state & secrets (the Worker code itself IS committed,
+# but wrangler's local vars / build output are not)
+worker/.dev.vars
+worker/.wrangler/
+worker/node_modules/
+
+# scratch screenshots at the repo root (keep the app icons in icons/)
+/*.png
+!icons/*.png
+
+# editor / OS noise
+.DS_Store
+Thumbs.db

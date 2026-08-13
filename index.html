@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#12151c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Portfolio">
+<title>PortfolioGuidance</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="phone">
+  <header>
+    <div class="h-top">
+      <div class="brand"><span class="dot">◑</span> Portfolio</div>
+      <div class="h-actions">
+        <div class="sync-chip" id="syncChip" onclick="PG.sync()">
+          <span class="live" id="syncDot"></span><span id="syncTxt">Connect</span>
+        </div>
+      </div>
+    </div>
+    <div class="summary" id="summaryBar"></div>
+  </header>
+
+  <main>
+    <!-- DASHBOARD -->
+    <div class="view active" id="v-dash">
+      <div class="donut-wrap">
+        <canvas id="donut" width="440" height="440"></canvas>
+        <div class="donut-center">
+          <span class="dc-label">Total value</span>
+          <span class="dc-value" id="donutTotal">—</span>
+          <span class="dc-sub" id="donutPnl"></span>
+        </div>
+      </div>
+      <h3 class="section-title">Sectoral allocation</h3>
+      <div id="allocList"></div>
+      <div class="empty-note" id="dashEmpty" hidden>
+        No holdings yet. Go to <strong>Settings → Connect Zerodha</strong>, or tap
+        <strong>Demo data</strong> to explore.
+      </div>
+    </div>
+
+    <!-- HOLDINGS -->
+    <div class="view" id="v-holdings">
+      <h3 class="section-title">Holdings <span class="muted" id="holdCount"></span></h3>
+      <div class="seg" id="holdSort">
+        <button class="seg-btn active" data-sort="value">Value</button>
+        <button class="seg-btn" data-sort="pnl">P&amp;L</button>
+        <button class="seg-btn" data-sort="alpha">A–Z</button>
+      </div>
+      <div id="holdList"></div>
+      <div class="empty-note" id="holdEmpty" hidden>No holdings loaded yet.</div>
+    </div>
+
+    <!-- CALCULATOR -->
+    <div class="view" id="v-calc">
+      <h3 class="section-title">Target-average calculator</h3>
+      <div class="card">
+        <label class="fld-label">Stock</label>
+        <div class="selwrap">
+          <select id="calcStock" class="fullsel" onchange="PG.calcPickStock(this.value)"></select>
+          <span class="caret">▾</span>
+        </div>
+        <div class="grid3">
+          <div class="mini">
+            <label class="fld-label">Qty held</label>
+            <input type="number" id="calcQty" inputmode="numeric" oninput="PG.calc()">
+          </div>
+          <div class="mini">
+            <label class="fld-label">Avg cost</label>
+            <input type="number" id="calcAvg" inputmode="decimal" oninput="PG.calc()">
+          </div>
+          <div class="mini">
+            <label class="fld-label">Market price</label>
+            <input type="number" id="calcLtp" inputmode="decimal" oninput="PG.calc()">
+          </div>
+        </div>
+      </div>
+
+      <div class="seg wide" id="calcMode">
+        <button class="seg-btn active" data-mode="down">Average down (buy)</button>
+        <button class="seg-btn" data-mode="trim">Trim (sell)</button>
+      </div>
+
+      <!-- Average down -->
+      <div class="card calc-panel" id="panel-down">
+        <label class="fld-label">Target average cost (₹)</label>
+        <input type="number" id="targetAvg" inputmode="decimal" placeholder="e.g. 950" oninput="PG.calc()">
+        <div class="result" id="downResult"></div>
+      </div>
+
+      <!-- Trim -->
+      <div class="card calc-panel" id="panel-trim" hidden>
+        <div class="seg" id="trimMode">
+          <button class="seg-btn active" data-trim="value">To target value</button>
+          <button class="seg-btn" data-trim="qty">To target qty</button>
+          <button class="seg-btn" data-trim="profit">Book profit</button>
+        </div>
+        <div id="trimInputWrap"></div>
+        <div class="result" id="trimResult"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="view" id="v-settings">
+      <h3 class="section-title">Zerodha</h3>
+      <div class="card">
+        <div class="row-between">
+          <div>
+            <div class="s-title" id="connState">Not connected</div>
+            <div class="s-sub" id="connSub">Connect to pull your live holdings.</div>
+          </div>
+          <button class="primary-btn" id="connBtn" onclick="PG.sync()">Connect</button>
+        </div>
+        <div class="row-between" style="margin-top:12px">
+          <div><div class="s-title">Demo data</div><div class="s-sub">Explore with sample holdings.</div></div>
+          <button class="ghost-btn" onclick="PG.loadDemo()">Load demo</button>
+        </div>
+      </div>
+
+      <h3 class="section-title">Sector map</h3>
+      <div class="card">
+        <div class="s-sub" style="margin-bottom:10px">Assign a sector to any holding. Unmapped stocks show as <em>Unclassified</em>.</div>
+        <div id="sectorEditor"></div>
+      </div>
+
+      <h3 class="section-title">Backup</h3>
+      <div class="card">
+        <div class="backup-row">
+          <button class="ghost-btn" onclick="PG.exportJson()">Export JSON</button>
+          <label class="ghost-btn" for="importFile">Import JSON</label>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+        <div class="s-sub" style="margin-top:8px">JSON is a full backup (holdings + your sector assignments) you can restore on any device.</div>
+      </div>
+
+      <h3 class="section-title">About</h3>
+      <div class="card s-sub" id="aboutBox"></div>
+    </div>
+  </main>
+
+  <nav>
+    <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard</button>
+    <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
+    <button data-v="calc" onclick="PG.setView('calc')"><span class="ni">∑</span>Calculator</button>
+    <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>
+  </nav>
+</div>
+
+<!-- sector picker sheet -->
+<div class="sheet-overlay" id="sectorSheet" hidden>
+  <div class="sheet">
+    <div class="sheet-title" id="sectorSheetTitle">Set sector</div>
+    <div id="sectorOptions" class="sector-options"></div>
+    <div class="sheet-actions">
+      <button class="sheet-btn" onclick="PG.closeSectorSheet()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="config.js"></script>
+<script src="sectors.js"></script>
+<script src="app.js"></script>
+<script>
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+</script>
+</body>
+</html>
