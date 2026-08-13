@@ -220,8 +220,10 @@
       var cls = h.pnl >= 0 ? 'up' : 'down';
       return '<div class="hold">' +
         '<div class="hold-l">' +
-          '<div class="hold-sym">' + esc(h.symbol) + '</div>' +
-          '<div class="hold-chip" style="border-color:' + sectorColor(sec) + '55;color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' + esc(sec) + ' ✎</div>' +
+          '<div class="hold-top">' +
+            '<span class="hold-sym">' + esc(h.symbol) + '</span>' +
+            '<span class="hold-sec" style="color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' + esc(sec) + ' ✎</span>' +
+          '</div>' +
           '<div class="hold-meta">' + h.qty + ' × ' + money2(h.avg) + '  ·  LTP ' + money2(h.ltp) + '</div>' +
         '</div>' +
         '<div class="hold-r">' +
