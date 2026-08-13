@@ -26,9 +26,10 @@
     holdSort: 'value',
     holdDir: 'desc',
     holdExpanded: null,
-    calcMode: 'down',
+    calcMode: 'add',
     trimMode: 'value',
     calcSym: null,
+    addDriver: null,
     expanded: {}
   };
 
@@ -295,40 +296,85 @@
   function calcPickStock(sym) {
     state.calcSym = sym;
     var h = state.holdings.find(function (x) { return x.symbol === sym; });
-    if (h) { el('calcQty').value = h.qty; el('calcAvg').value = h.avg; el('calcLtp').value = h.ltp; }
+    if (h) { el('calcQty').value = h.qty; el('calcAvg').value = h.avg; el('calcLtp').value = h.ltp; el('buyPrice').value = h.ltp; }
+    state.addDriver = null;
+    ['inAvg', 'inQty', 'inAmt'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
     calc();
   }
   function num(id) { var v = parseFloat(el(id).value); return isFinite(v) ? v : NaN; }
 
   function calc() {
-    if (state.calcMode === 'down') calcDown(); else calcTrim();
+    if (state.calcMode === 'trim') calcTrim(); else calcAdd();
   }
 
-  function calcDown() {
-    var out = el('downResult');
-    var qty = num('calcQty'), avg = num('calcAvg'), ltp = num('calcLtp'), T = num('targetAvg');
-    if (!isFinite(qty) || !isFinite(avg) || !isFinite(ltp)) { out.innerHTML = hint('Enter quantity, average and market price.'); return; }
-    if (!isFinite(T)) { out.innerHTML = hint('Enter a target average to see how many shares to buy.'); return; }
-    var lo = Math.min(avg, ltp), hi = Math.max(avg, ltp);
-    if (T <= lo || T >= hi) {
-      out.innerHTML = warn('Target must be strictly between the market price (' + money2(ltp) + ') and your current average (' + money2(avg) + '). You can only move your average toward the price you buy at.');
+  // ---- Add / Average ----
+  function calcAddDrive(which) { state.addDriver = which; calcAdd(); }
+  function setVal(id, v) { var e = el(id); if (e && e !== document.activeElement) e.value = v; }
+  function deltaChip(d) {
+    var up = d >= 0;
+    return ' <span class="' + (up ? 'up' : 'down') + '">(' + (up ? '↑' : '↓') + Math.abs(d).toFixed(2) + '%)</span>';
+  }
+  function calcAdd() {
+    var out = el('addResult');
+    var Q = num('calcQty'), A = num('calcAvg'), B = num('buyPrice');
+    if (!isFinite(B) || B <= 0) B = num('calcLtp');
+    if (!isFinite(Q) || !isFinite(A) || !isFinite(B) || B <= 0) {
+      out.innerHTML = hint('Pick a holding above — its quantity, average and price load automatically.');
       return;
     }
-    var x = qty * (T - avg) / (ltp - T);
-    var shares = Math.ceil(x - 1e-9);
-    if (shares < 1) shares = 1;
-    var newQty = qty + shares;
-    var newAvg = (qty * avg + shares * ltp) / newQty;
-    var cost = shares * ltp;
-    var dir = avg > ltp ? 'lower' : 'raise';
-    out.innerHTML =
-      big('Buy ' + inr0.format(shares) + ' shares', 'at ' + money2(ltp) + ' to ' + dir + ' your average to ≈ ' + money2(newAvg)) +
-      kv([
-        ['Capital required', money(cost)],
-        ['New quantity', inr0.format(newQty)],
-        ['New average cost', money2(newAvg)],
-        ['New invested', money(qty * avg + cost)]
-      ]);
+    var driver = state.addDriver, x = NaN;
+    if (driver === 'qty') { var q = num('inQty'); if (isFinite(q)) x = Math.round(q); }
+    else if (driver === 'amt') { var amt = num('inAmt'); if (isFinite(amt)) x = Math.round(amt / B); }
+    else if (driver === 'avg') {
+      var T = num('inAvg');
+      if (isFinite(T)) {
+        var lo = Math.min(A, B), hi = Math.max(A, B);
+        if (T <= lo || T >= hi) {
+          out.innerHTML = warn('Intended average must be between your current average (' + money2(A) + ') and the buy price (' + money2(B) + ').');
+          setVal('inQty', ''); setVal('inAmt', '');
+          return;
+        }
+        x = Math.round(Q * (A - T) / (T - B));
+      }
+    }
+    if (!isFinite(x)) { out.innerHTML = hint('Fill any one of Intended avg, Additional quantity, or Additional investment — the other two auto-fill.'); return; }
+    if (x < 1) { out.innerHTML = warn('That works out to less than one share to add.'); return; }
+
+    var addInvest = x * B;
+    var newQty = Q + x;
+    var newInvested = Q * A + addInvest;
+    var newAvg = newInvested / newQty;
+
+    if (driver !== 'qty') setVal('inQty', String(x));
+    if (driver !== 'amt') setVal('inAmt', String(Math.round(addInvest)));
+    if (driver !== 'avg') setVal('inAvg', newAvg.toFixed(2));
+
+    var rows = [
+      ['New average', money2(newAvg)],
+      ['New quantity', inr0.format(newQty)],
+      ['This purchase', money(addInvest)],
+      ['New invested (stock)', money(newInvested)]
+    ];
+
+    var sym = state.calcSym, sec = sym ? sectorOf(sym) : null;
+    if (sym && sec) {
+      var totalInv = 0, secInv = 0;
+      state.holdings.forEach(function (h) {
+        var inv = (h.symbol === sym) ? (Q * A) : (h.qty * h.avg);
+        totalInv += inv;
+        if (sectorOf(h.symbol) === sec) secInv += inv;
+      });
+      var curStock = Q * A;
+      var nStock = curStock + addInvest, nSec = secInv + addInvest, nTot = totalInv + addInvest;
+      var curWSec = secInv ? curStock / secInv * 100 : 0, nWSec = nSec ? nStock / nSec * 100 : 0;
+      var curWPort = totalInv ? curStock / totalInv * 100 : 0, nWPort = nTot ? nStock / nTot * 100 : 0;
+      var curSecShare = totalInv ? secInv / totalInv * 100 : 0, nSecShare = nTot ? nSec / nTot * 100 : 0;
+      rows.push(['Weight in ' + esc(sec), nWSec.toFixed(1) + '%' + deltaChip(nWSec - curWSec)]);
+      rows.push(['Weight in portfolio', nWPort.toFixed(1) + '%' + deltaChip(nWPort - curWPort)]);
+      rows.push([esc(sec) + ' share of portfolio', nSecShare.toFixed(1) + '%' + deltaChip(nSecShare - curSecShare)]);
+    }
+
+    out.innerHTML = big('Add ' + inr0.format(x) + ' shares', 'at ' + money2(B) + ' → new average ≈ ' + money2(newAvg)) + kv(rows);
   }
 
   function trimInputHtml() {
@@ -612,7 +658,7 @@
     el('calcMode').addEventListener('click', function (e) {
       var b = e.target.closest('.seg-btn'); if (!b) return;
       seg(this, b); state.calcMode = b.getAttribute('data-mode');
-      el('panel-down').hidden = state.calcMode !== 'down';
+      el('panel-add').hidden = state.calcMode !== 'add';
       el('panel-trim').hidden = state.calcMode !== 'trim';
       calc();
     });
@@ -642,7 +688,7 @@
   // public API
   window.PG = {
     setView: setView, sync: sync, loadDemo: loadDemo,
-    calc: calc, calcPickStock: calcPickStock, toggleSector: toggleSector, toggleHold: toggleHold,
+    calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet,
     saveAppKey: saveAppKey, exportJson: exportJson
   };

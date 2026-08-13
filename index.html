@@ -65,7 +65,7 @@
 
     <!-- CALCULATOR -->
     <div class="view" id="v-calc">
-      <h3 class="section-title">Target-average calculator</h3>
+      <h3 class="section-title">Position calculator</h3>
       <div class="card">
         <label class="fld-label">Stock</label>
         <div class="selwrap">
@@ -89,15 +89,29 @@
       </div>
 
       <div class="seg wide" id="calcMode">
-        <button class="seg-btn active" data-mode="down">Average down (buy)</button>
+        <button class="seg-btn active" data-mode="add">Add / Average</button>
         <button class="seg-btn" data-mode="trim">Trim (sell)</button>
       </div>
 
-      <!-- Average down -->
-      <div class="card calc-panel" id="panel-down">
-        <label class="fld-label">Target average cost (₹)</label>
-        <input type="number" id="targetAvg" inputmode="decimal" placeholder="e.g. 950" oninput="PG.calc()">
-        <div class="result" id="downResult"></div>
+      <!-- Add / Average -->
+      <div class="card calc-panel" id="panel-add">
+        <label class="fld-label">Buy price (₹)</label>
+        <input type="number" id="buyPrice" inputmode="decimal" placeholder="defaults to market price" oninput="PG.calc()">
+        <div class="add-fields">
+          <div class="af">
+            <label class="fld-label">Intended avg price (₹)</label>
+            <input type="number" id="inAvg" inputmode="decimal" placeholder="target blended average" oninput="PG.calcAddDrive('avg')">
+          </div>
+          <div class="af">
+            <label class="fld-label">Additional quantity</label>
+            <input type="number" id="inQty" inputmode="numeric" placeholder="shares to buy" oninput="PG.calcAddDrive('qty')">
+          </div>
+          <div class="af">
+            <label class="fld-label">Additional investment (₹)</label>
+            <input type="number" id="inAmt" inputmode="decimal" placeholder="amount to deploy" oninput="PG.calcAddDrive('amt')">
+          </div>
+        </div>
+        <div class="result" id="addResult"></div>
       </div>
 
       <!-- Trim -->
