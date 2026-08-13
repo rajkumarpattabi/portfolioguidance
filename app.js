@@ -163,7 +163,7 @@
   function holdingsInSector(sec) {
     return state.holdings.filter(function (h) { return sectorOf(h.symbol) === sec; })
       .map(function (h) { return Object.assign({}, h, enrich(h)); })
-      .sort(function (a, b) { return b.value - a.value; });
+      .sort(function (a, b) { return b.invested - a.invested; }); // by portfolio weightage (invested), largest first
   }
 
   function toggleSector(i) {
