@@ -90,7 +90,7 @@
   function bySector() {
     var m = {};
     state.holdings.forEach(function (h) {
-      var s = sectorOf(h.symbol); var v = h.qty * h.ltp;
+      var s = sectorOf(h.symbol); var v = h.qty * h.avg; // allocation by INVESTED amount
       m[s] = (m[s] || 0) + v;
     });
     return Object.keys(m).map(function (s) { return { sector: s, value: m[s] }; })
@@ -131,8 +131,8 @@
       if (pc) { pc.textContent = pct(t.pnlPct); pc.className = 'dc-pct ' + (t.pnl >= 0 ? 'up' : 'down'); }
     } else { pe.textContent = ''; if (pc) pc.textContent = ''; }
 
-    drawDonut(bySector(), t.value);
-    renderAlloc(t.value);
+    drawDonut(bySector(), t.invested);
+    renderAlloc(t.invested);
   }
 
   var allocSegs = [];
@@ -144,7 +144,7 @@
       var p = total ? s.value / total * 100 : 0;
       var open = !!state.expanded[s.sector];
       var stocks = holdingsInSector(s.sector).map(function (h) {
-        var w = total ? h.value / total * 100 : 0;
+        var w = total ? h.invested / total * 100 : 0;
         return '<div class="sec-stock"><span class="ss-sym">' + esc(h.symbol) + '</span>' +
           '<span class="ss-wt">' + w.toFixed(1) + '%</span></div>';
       }).join('');
@@ -506,13 +506,15 @@
   // ---------- demo / backup ----------
   function loadDemo() {
     var demo = [
-      ['HDFCBANK', 40, 1520, 1662, 1650], ['ICICIBANK', 55, 980, 1244, 1235],
-      ['INFY', 30, 1490, 1585, 1601], ['TCS', 12, 3620, 3910, 3888],
-      ['RELIANCE', 25, 2410, 2955, 2930], ['SUNPHARMA', 20, 1180, 1712, 1699],
-      ['TITAN', 15, 3050, 3388, 3402], ['LT', 10, 3120, 3612, 3590],
-      ['TATAMOTORS', 45, 720, 985, 1002], ['BHARTIARTL', 30, 980, 1585, 1560],
-      ['PIIND', 18, 3300, 3810, 3795], ['HAL', 8, 3400, 4620, 4700],
-      ['ULTRACEMCO', 4, 9800, 11550, 11480], ['DIXON', 6, 9200, 14300, 14100]
+      ['HDFCBANK', 40, 1520, 1662, 1650], ['KOTAKBANK', 18, 1750, 1824, 1812],
+      ['BAJFINANCE', 8, 6500, 7180, 7150], ['JIOFIN', 120, 230, 292, 288],
+      ['HDFCLIFE', 30, 580, 642, 636], ['TCS', 12, 3620, 3910, 3888],
+      ['INFY', 30, 1490, 1585, 1601], ['DRREDDY', 9, 5600, 6250, 6210],
+      ['TORNTPHARM', 6, 2600, 3050, 3030], ['HINDUNILVR', 15, 2350, 2482, 2470],
+      ['ITC', 60, 400, 446, 442], ['TMPV', 25, 720, 985, 1002],
+      ['PIDILITIND', 8, 2600, 2952, 2935], ['ASIANPAINT', 10, 2900, 2760, 2775],
+      ['VEDL', 40, 280, 462, 455], ['LT', 6, 3120, 3612, 3590],
+      ['SUZLON', 200, 38, 62, 61], ['GOLDIETF', 50, 55, 72, 71]
     ].map(function (r) { return { symbol: r[0], exchange: 'NSE', qty: r[1], avg: r[2], ltp: r[3], close: r[4] }; });
     applyHoldings(demo, 'demo data');
     toast('Loaded sample holdings.');
@@ -546,7 +548,7 @@
     state.view = v;
     document.querySelectorAll('.view').forEach(function (n) { n.classList.toggle('active', n.id === 'v-' + v); });
     document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-v') === v); });
-    if (v === 'dash') drawDonut(bySector(), totals().value);
+    if (v === 'dash') drawDonut(bySector(), totals().invested);
     window.scrollTo(0, 0);
   }
 

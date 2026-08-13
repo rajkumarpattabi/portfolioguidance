@@ -165,9 +165,8 @@ nav button.active{color:var(--accent)}
 @keyframes rip{to{transform:scale(2.4);opacity:0}}
 
 /* collapsible two-column sector allocation */
-#allocList{column-count:2;column-gap:10px;margin-top:2px}
-.sec-card{break-inside:avoid;display:inline-block;width:100%;margin:0 0 10px;background:var(--card);
-  border:1px solid var(--line);border-radius:12px;overflow:hidden}
+#allocList{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;margin-top:2px}
+.sec-card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .sec-head{display:flex;align-items:center;gap:7px;width:100%;background:none;border:none;color:var(--txt);
   padding:10px 11px;cursor:pointer;text-align:left}
 .sh-name{flex:1;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
