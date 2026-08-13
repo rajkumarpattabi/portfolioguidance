@@ -24,6 +24,7 @@
     meta: load(K.meta, { lastSync: 0, source: '' }),
     view: 'dash',
     holdSort: 'value',
+    holdDir: 'desc',
     calcMode: 'down',
     trimMode: 'value',
     calcSym: null,
@@ -193,17 +194,26 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  function updateSortArrows() {
+    var btns = document.querySelectorAll('#holdSort .seg-btn');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i], active = b.getAttribute('data-sort') === state.holdSort;
+      b.classList.toggle('active', active);
+      var ar = b.querySelector('.sarrow');
+      if (ar) ar.textContent = active ? (state.holdDir === 'desc' ? ' ↓' : ' ↑') : '';
+    }
+  }
+
   function renderHoldings() {
     var wrap = el('holdList'); var has = state.holdings.length > 0;
     el('holdEmpty').hidden = has;
     el('holdCount').textContent = has ? '(' + state.holdings.length + ')' : '';
     var arr = state.holdings.map(function (h) { return Object.assign({}, h, enrich(h)); });
-    var so = state.holdSort;
-    if (so === 'value') arr.sort(function (a, b) { return b.value - a.value; });
-    else if (so === 'pnl') arr.sort(function (a, b) { return b.pnl - a.pnl; });
-    else if (so === 'day') arr.sort(function (a, b) { return b.day - a.day; });
-    else if (so === 'invested') arr.sort(function (a, b) { return b.invested - a.invested; });
-    else arr.sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; });
+    var so = state.holdSort, dir = (state.holdDir === 'asc' ? 1 : -1), cmp;
+    if (so === 'alpha') cmp = function (a, b) { return a.symbol < b.symbol ? -1 : (a.symbol > b.symbol ? 1 : 0); };
+    else cmp = function (a, b) { return (a[so] || 0) - (b[so] || 0); };
+    arr.sort(function (a, b) { return dir * cmp(a, b); });
+    updateSortArrows();
 
     wrap.innerHTML = arr.map(function (h) {
       var sec = sectorOf(h.symbol);
@@ -542,7 +552,10 @@
   function wireSegs() {
     el('holdSort').addEventListener('click', function (e) {
       var b = e.target.closest('.seg-btn'); if (!b) return;
-      seg(this, b); state.holdSort = b.getAttribute('data-sort'); renderHoldings();
+      var key = b.getAttribute('data-sort');
+      if (state.holdSort === key) state.holdDir = (state.holdDir === 'desc' ? 'asc' : 'desc');
+      else { state.holdSort = key; state.holdDir = (key === 'alpha' ? 'asc' : 'desc'); }
+      renderHoldings();
     });
     el('calcMode').addEventListener('click', function (e) {
       var b = e.target.closest('.seg-btn'); if (!b) return;

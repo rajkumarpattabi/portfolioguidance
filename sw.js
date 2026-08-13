@@ -1,6 +1,6 @@
 // Offline cache for PortfolioGuidance (mealfast/healthdashboard-style).
 // Bump VERSION to force all clients to refresh cached assets.
-const VERSION = 'pg-v4';
+const VERSION = 'pg-v5';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './config.js', './sectors.js',
   './manifest.json',
