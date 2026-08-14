@@ -165,6 +165,7 @@ nav button.active{color:var(--accent)}
 .sheet-overlay{position:fixed;inset:0;z-index:50;background:#000a;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--panel);border:1px solid var(--line);border-bottom:none;border-radius:20px 20px 0 0;
   width:100%;max-width:520px;max-height:82vh;overflow:auto;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.sheet-grip{width:40px;height:4px;border-radius:3px;background:var(--line);margin:0 auto 12px}
 .sheet-title{font-size:15px;font-weight:700;margin-bottom:12px}
 .sector-options{display:flex;flex-direction:column;gap:2px}
 .sec-opt{display:flex;align-items:center;gap:10px;background:none;border:none;border-bottom:1px solid var(--line);

@@ -181,8 +181,9 @@
 </div>
 
 <!-- sector picker sheet -->
-<div class="sheet-overlay" id="sectorSheet" hidden>
-  <div class="sheet">
+<div class="sheet-overlay" id="sectorSheet" hidden onclick="PG.sheetBackdrop(event)">
+  <div class="sheet" id="sectorSheetPanel">
+    <div class="sheet-grip"></div>
     <div class="sheet-title" id="sectorSheetTitle">Set sector</div>
     <div id="sectorOptions" class="sector-options"></div>
     <div class="sheet-actions">

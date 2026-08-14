@@ -495,7 +495,37 @@
       return '<button class="sec-opt' + (s === cur ? ' sel' : '') + '" onclick="PG.setSector(\'' + esc(s) + '\')">' +
         '<span class="alloc-dot" style="background:' + sectorColor(s) + '"></span>' + esc(s) + '</button>';
     }).join('');
+    var p = el('sectorSheetPanel'); if (p) { p.style.transition = ''; p.style.transform = ''; p.scrollTop = 0; }
     el('sectorSheet').hidden = false;
+  }
+  function sheetBackdrop(e) { if (e.target === el('sectorSheet')) closeSectorSheet(); }
+  function wireSheetSwipe() {
+    var panel = el('sectorSheetPanel'); if (!panel) return;
+    var startY = 0, curY = 0, dragging = false, atTop = false;
+    panel.addEventListener('touchstart', function (e) {
+      startY = curY = e.touches[0].clientY; atTop = panel.scrollTop <= 0; dragging = true;
+      panel.style.transition = 'none';
+    }, { passive: true });
+    panel.addEventListener('touchmove', function (e) {
+      if (!dragging) return;
+      curY = e.touches[0].clientY;
+      var dy = curY - startY;
+      if (dy > 0 && atTop) {
+        panel.style.transform = 'translateY(' + dy + 'px)';
+        if (e.cancelable) e.preventDefault();
+      }
+    }, { passive: false });
+    function end() {
+      if (!dragging) return; dragging = false;
+      var dy = curY - startY;
+      panel.style.transition = 'transform .2s ease';
+      if (dy > 80 && atTop) {
+        panel.style.transform = 'translateY(100%)';
+        setTimeout(function () { closeSectorSheet(); }, 180);
+      } else { panel.style.transform = 'translateY(0)'; }
+    }
+    panel.addEventListener('touchend', end);
+    panel.addEventListener('touchcancel', end);
   }
   function setSector(s) {
     if (sheetSym) {
@@ -506,7 +536,10 @@
     closeSectorSheet();
     render();
   }
-  function closeSectorSheet() { el('sectorSheet').hidden = true; sheetSym = null; }
+  function closeSectorSheet() {
+    el('sectorSheet').hidden = true; sheetSym = null;
+    var p = el('sectorSheetPanel'); if (p) { p.style.transition = ''; p.style.transform = ''; }
+  }
 
   // ---------- Zerodha sync via Worker ----------
   function appKey() {
@@ -685,6 +718,7 @@
   // ---------- boot ----------
   function boot() {
     wireSegs();
+    wireSheetSwipe();
     el('importFile').addEventListener('change', function () { if (this.files[0]) importJson(this.files[0]); this.value = ''; });
     render();
     // returning from Kite login (Worker redirected us back)?
@@ -699,7 +733,7 @@
   window.PG = {
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
-    openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet,
+    openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     saveAppKey: saveAppKey, exportJson: exportJson
   };
 
