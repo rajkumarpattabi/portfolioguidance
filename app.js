@@ -44,7 +44,7 @@
 
   // ---------- helpers ----------
   var inr0 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
-  var inr2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var inr2 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
   function money(n) { return '₹' + inr2.format(n || 0); }
   function money2(n) { return '₹' + inr2.format(n || 0); }
   function signMoney(n) { return (n >= 0 ? '+' : '−') + '₹' + inr2.format(Math.abs(n || 0)); }
