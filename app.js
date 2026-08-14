@@ -45,9 +45,9 @@
   // ---------- helpers ----------
   var inr0 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
   var inr2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  function money(n) { return '₹' + inr0.format(Math.round(n || 0)); }
+  function money(n) { return '₹' + inr2.format(n || 0); }
   function money2(n) { return '₹' + inr2.format(n || 0); }
-  function signMoney(n) { return (n >= 0 ? '+' : '−') + '₹' + inr0.format(Math.abs(Math.round(n || 0))); }
+  function signMoney(n) { return (n >= 0 ? '+' : '−') + '₹' + inr2.format(Math.abs(n || 0)); }
   function pct(n) { return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function el(id) { return document.getElementById(id); }
