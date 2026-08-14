@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div id="pullHint" class="pull-hint">↓ Pull to refresh</div>
 <div id="phone">
   <header>
     <div class="h-top">
@@ -31,6 +32,7 @@
   <main>
     <!-- DASHBOARD -->
     <div class="view active" id="v-dash">
+      <div class="freshline" id="freshLine" hidden></div>
       <div class="donut-wrap">
         <canvas id="donut" width="440" height="440"></canvas>
         <div class="donut-center">
@@ -40,7 +42,14 @@
           <span class="dc-pct" id="donutPct"></span>
         </div>
       </div>
-      <h3 class="section-title">Sectoral allocation</h3>
+      <div id="moversStrip" hidden></div>
+      <div class="alloc-head">
+        <h3 class="section-title" style="margin:0">Sectoral allocation</h3>
+        <div class="seg" id="allocBasis">
+          <button class="seg-btn active" data-basis="invested" onclick="PG.setAllocBasis('invested')">Invested</button>
+          <button class="seg-btn" data-basis="value" onclick="PG.setAllocBasis('value')">Value</button>
+        </div>
+      </div>
       <div id="allocList"></div>
       <div class="empty-note" id="dashEmpty" hidden>
         No holdings yet. Go to <strong>Settings → Connect Zerodha</strong>, or tap
@@ -179,6 +188,7 @@
           <div class="card">
             <div class="backup-row">
               <button class="ghost-btn" onclick="PG.exportJson()">Export JSON</button>
+              <button class="ghost-btn" onclick="PG.exportCsv()">Export CSV</button>
               <label class="ghost-btn" for="importFile">Import JSON</label>
               <input type="file" id="importFile" accept="application/json,.json" hidden>
             </div>
@@ -199,7 +209,7 @@
   <nav>
     <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard</button>
     <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
-    <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action</button>
+    <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action<span class="navbadge" id="actionBadge" hidden></span></button>
     <button data-v="calc" onclick="PG.setView('calc')"><span class="ni">∑</span>Calculator</button>
     <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>
   </nav>
