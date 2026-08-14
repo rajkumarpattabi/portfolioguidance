@@ -63,6 +63,12 @@
       <div class="empty-note" id="holdEmpty" hidden>No holdings loaded yet.</div>
     </div>
 
+    <!-- ACTION -->
+    <div class="view" id="v-action">
+      <h3 class="section-title">Action</h3>
+      <div id="actionBody"></div>
+    </div>
+
     <!-- CALCULATOR -->
     <div class="view" id="v-calc">
       <h3 class="section-title">Position calculator</h3>
@@ -151,9 +157,9 @@
         </div>
       </div>
 
-      <h3 class="section-title">Sector map</h3>
+      <h3 class="section-title">Sectors &amp; zones</h3>
       <div class="card">
-        <div class="s-sub" style="margin-bottom:10px">Assign a sector to any holding. Unmapped stocks show as <em>Unclassified</em>.</div>
+        <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
         <div id="sectorEditor"></div>
       </div>
 
@@ -175,6 +181,7 @@
   <nav>
     <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard</button>
     <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
+    <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action</button>
     <button data-v="calc" onclick="PG.setView('calc')"><span class="ni">∑</span>Calculator</button>
     <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>
   </nav>

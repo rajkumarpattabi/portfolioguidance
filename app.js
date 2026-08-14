@@ -15,13 +15,16 @@
     holdings: 'PG_HOLDINGS',
     overrides: 'PG_SECTOR_OVERRIDES',
     meta: 'PG_META',
-    appkey: 'PG_APPKEY'
+    appkey: 'PG_APPKEY',
+    zones: 'PG_ZONES'
   };
 
   var state = {
     holdings: load(K.holdings, []),          // [{symbol, qty, avg, ltp, close, exchange}]
     overrides: load(K.overrides, {}),        // {symbol: sector}
     meta: load(K.meta, { lastSync: 0, source: '' }),
+    zones: load(K.zones, {}),
+    actionOpen: { buy: true, sell: true },
     view: 'dash',
     holdSort: 'value',
     holdDir: 'desc',
@@ -104,6 +107,7 @@
     renderSummary();
     renderDash();
     renderHoldings();
+    renderAction();
     renderCalcStocks();
     renderSettings();
   }
@@ -457,18 +461,22 @@
     if (rb && !rb.classList.contains('loading') && !rb.classList.contains('done')) btnState('idle');
     var ai = el('appKeyInput'); if (ai) ai.value = localStorage.getItem(K.appkey) || '';
 
-    // sector editor
+    // sectors & zones table
     var se = el('sectorEditor');
-    if (!state.holdings.length) { se.innerHTML = '<div class="s-sub">Load holdings to assign sectors.</div>'; }
+    if (!state.holdings.length) { se.innerHTML = '<div class="s-sub">Load holdings to set sectors and zones.</div>'; }
     else {
-      se.innerHTML = state.holdings.slice().sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; })
+      var rows = state.holdings.slice().sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; })
         .map(function (h) {
-          var sec = sectorOf(h.symbol);
-          return '<div class="sec-edit-row" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' +
-            '<span class="see-sym">' + esc(h.symbol) + '</span>' +
-            '<span class="see-sec"><span class="alloc-dot" style="background:' + sectorColor(sec) + '"></span>' + esc(sec) + ' ✎</span>' +
-            '</div>';
+          var sec = sectorOf(h.symbol), z = state.zones[h.symbol] || {};
+          var bv = (z.buy != null ? z.buy : ''), sv = (z.sell != null ? z.sell : '');
+          return '<div class="zt-row">' +
+            '<span class="zt-sym">' + esc(h.symbol) + '</span>' +
+            '<span class="zt-sec" style="color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' + esc(sec) + '</span>' +
+            '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + bv + '" oninput="PG.setZone(\'' + esc(h.symbol) + '\',\'buy\',this.value)">' +
+            '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + sv + '" oninput="PG.setZone(\'' + esc(h.symbol) + '\',\'sell\',this.value)">' +
+          '</div>';
         }).join('');
+      se.innerHTML = '<div class="zt-head"><span>Stock</span><span>Sector</span><span>Buy</span><span>Sell</span></div>' + rows;
     }
 
     el('aboutBox').innerHTML =
@@ -483,6 +491,76 @@
     if (s < 3600) return Math.floor(s / 60) + ' min ago';
     if (s < 86400) return Math.floor(s / 3600) + ' h ago';
     return Math.floor(s / 86400) + ' d ago';
+  }
+
+  // ---------- Action tab (buy / sell zones) ----------
+  function setZone(sym, kind, raw) {
+    var v = parseFloat(raw);
+    var z = state.zones[sym] || {};
+    if (isFinite(v) && v > 0) z[kind] = v; else delete z[kind];
+    if (z.buy == null && z.sell == null) delete state.zones[sym]; else state.zones[sym] = z;
+    save(K.zones, state.zones);
+    renderAction();
+  }
+  function toggleZone(key) { state.actionOpen[key] = !state.actionOpen[key]; renderAction(); }
+
+  function renderAction() {
+    var body = el('actionBody'); if (!body) return;
+    if (!state.holdings.length) { body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
+
+    var buy = { deep: [], value: [], acc: [] }, sell = { book: [], trim: [], watch: [] };
+    state.holdings.forEach(function (h) {
+      var z = state.zones[h.symbol] || {}, sec = sectorOf(h.symbol), ltp = h.ltp;
+      if (z.buy != null && z.buy > 0 && ltp <= z.buy) {
+        var disc = (z.buy - ltp) / z.buy * 100;
+        var it = { sym: h.symbol, sec: sec, ltp: ltp, target: z.buy, pct: disc };
+        (disc >= 20 ? buy.deep : disc >= 10 ? buy.value : buy.acc).push(it);
+      }
+      if (z.sell != null && z.sell > 0 && ltp >= z.sell) {
+        var prem = (ltp - z.sell) / z.sell * 100;
+        var it2 = { sym: h.symbol, sec: sec, ltp: ltp, target: z.sell, pct: prem };
+        (prem >= 20 ? sell.book : prem >= 10 ? sell.trim : sell.watch).push(it2);
+      }
+    });
+    function srt(a) { a.sort(function (x, y) { return y.pct - x.pct; }); }
+    [buy.deep, buy.value, buy.acc, sell.book, sell.trim, sell.watch].forEach(srt);
+
+    var anyBuy = buy.deep.length + buy.value.length + buy.acc.length;
+    var anySell = sell.book.length + sell.trim.length + sell.watch.length;
+    if (!anyBuy && !anySell) {
+      body.innerHTML = '<div class="empty-note">No stock is in a buy or sell zone right now. Set <strong>Buy</strong> / <strong>Sell</strong> target prices under <strong>Settings → Sectors &amp; zones</strong>, and holdings show up here when the price crosses them.</div>';
+      return;
+    }
+    body.innerHTML =
+      zoneHtml('Buy zone', 'buy', anyBuy, [['Deep Value', buy.deep], ['Value', buy.value], ['Accumulate', buy.acc]]) +
+      zoneHtml('Sell zone', 'sell', anySell, [['Book Profit', sell.book], ['Trim', sell.trim], ['Watch', sell.watch]]);
+  }
+
+  function zoneHtml(title, key, count, subs) {
+    var open = state.actionOpen[key] !== false;
+    var subHtml = subs.map(function (s) {
+      var rows = s[1].length ? s[1].map(function (it) { return actionRow(it, key); }).join('') : '<div class="az-none">—</div>';
+      return '<div class="az-sub"><div class="az-sub-h">' + s[0] + ' <span class="az-cnt">' + s[1].length + '</span></div>' + rows + '</div>';
+    }).join('');
+    return '<div class="az-zone">' +
+      '<button class="az-head" type="button" onclick="PG.toggleZone(\'' + key + '\')">' +
+        '<span>' + title + ' <span class="az-zcnt">' + count + '</span></span>' +
+        '<span class="az-caret' + (open ? ' open' : '') + '">▾</span>' +
+      '</button>' +
+      '<div class="az-body"' + (open ? '' : ' hidden') + '>' + subHtml + '</div>' +
+    '</div>';
+  }
+
+  function actionRow(it, kind) {
+    var cls = kind === 'buy' ? 'up' : 'down';
+    var arrow = kind === 'buy' ? '▼' : '▲';
+    var word = kind === 'buy' ? 'below' : 'above';
+    return '<div class="az-row">' +
+      '<div class="az-l"><span class="az-sym">' + esc(it.sym) + '</span>' +
+        '<span class="az-sec" style="color:' + sectorColor(it.sec) + '">' + esc(it.sec) + '</span></div>' +
+      '<div class="az-r"><span class="az-pct ' + cls + '">' + arrow + ' ' + it.pct.toFixed(1) + '% ' + word + '</span>' +
+        '<span class="az-meta">LTP ' + money2(it.ltp) + ' · target ' + money2(it.target) + '</span></div>' +
+    '</div>';
   }
 
   // ---------- sector sheet ----------
@@ -653,8 +731,8 @@
   }
 
   function exportJson() {
-    var payload = { app: 'PortfolioGuidance', version: 1, exportedAt: new Date().toISOString(),
-      holdings: state.holdings, overrides: state.overrides, meta: state.meta };
+    var payload = { app: 'PortfolioGuidance', version: 2, exportedAt: new Date().toISOString(),
+      holdings: state.holdings, overrides: state.overrides, zones: state.zones, meta: state.meta };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'portfolioguidance-backup.json'; a.click();
@@ -667,6 +745,7 @@
         var j = JSON.parse(r.result);
         if (j.holdings) { state.holdings = j.holdings; save(K.holdings, state.holdings); }
         if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
+        if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
         if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
         render(); toast('Backup restored.');
       } catch (e) { toast('That file was not a valid backup.'); }
@@ -734,7 +813,7 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
-    saveAppKey: saveAppKey, exportJson: exportJson
+    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleZone: toggleZone
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
