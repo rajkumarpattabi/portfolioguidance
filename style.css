@@ -219,8 +219,8 @@ nav button.active{color:var(--accent)}
 .zt-row:last-child{border-bottom:none}
 .zt-sym{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .zt-sec{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-.zt-in{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:11px;padding:6px 4px;border-radius:8px;text-align:center;-webkit-appearance:none;appearance:none}
-.zt-in:focus{border-color:var(--accent);outline:none}
+input.zt-in{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:11px;padding:6px 4px;border-radius:8px;text-align:center;-webkit-appearance:none;appearance:none}
+input.zt-in:focus{border-color:var(--accent);outline:none}
 
 /* Action tab */
 .az-zone{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
@@ -228,13 +228,14 @@ nav button.active{color:var(--accent)}
 .az-zcnt{display:inline-block;min-width:20px;text-align:center;font-size:11px;font-weight:700;color:var(--mut);background:var(--card2);border-radius:999px;padding:1px 7px;margin-left:6px}
 .az-body{padding:0 12px 10px}
 .az-sub-h{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
-  color:var(--mut);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
-  padding:9px 2px 6px;border-top:1px solid var(--line);cursor:pointer;text-align:left}
-.az-scaret{color:var(--mut);font-size:11px;transition:transform .18s}
+  color:var(--txt);font-size:14px;font-weight:800;letter-spacing:.2px;
+  padding:11px 2px 7px;border-top:1px solid var(--line);cursor:pointer;text-align:left}
+.az-scaret{color:var(--mut);font-size:12px;transition:transform .18s}
 .az-sub.open .az-scaret{transform:rotate(180deg)}
 .az-cnt{color:var(--mut2);font-weight:600}
 .az-none{font-size:12px;color:var(--mut2);padding:2px 2px 6px}
-.az-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)}
+.az-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.az-row:active{background:var(--card2)}
 .az-row:last-child{border-bottom:none}
 .az-l{min-width:0}
 .az-sym{font-size:13.5px;font-weight:700;margin-right:7px}

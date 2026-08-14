@@ -504,6 +504,11 @@
   }
   function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
   function toggleSet(key) { var s = el('set-' + key); if (s) s.classList.toggle('collapsed'); }
+  function openCalc(sym) {
+    var sel = el('calcStock'); if (sel) sel.value = sym;
+    setView('calc');
+    calcPickStock(sym);
+  }
 
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
@@ -560,7 +565,7 @@
     var cls = kind === 'buy' ? 'up' : 'down';
     var arrow = kind === 'buy' ? '▼' : '▲';
     var word = kind === 'buy' ? 'below' : 'above';
-    return '<div class="az-row">' +
+    return '<div class="az-row" onclick="PG.openCalc(\'' + esc(it.sym) + '\')">' +
       '<div class="az-l"><span class="az-sym">' + esc(it.sym) + '</span>' +
         '<span class="az-sec" style="color:' + sectorColor(it.sec) + '">' + esc(it.sec) + '</span></div>' +
       '<div class="az-r"><span class="az-pct ' + cls + '">' + arrow + ' ' + it.pct.toFixed(1) + '% ' + word + '</span>' +
@@ -818,7 +823,7 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
-    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet
+    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
