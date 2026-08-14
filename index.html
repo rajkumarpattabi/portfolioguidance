@@ -136,47 +136,63 @@
 
     <!-- SETTINGS -->
     <div class="view" id="v-settings">
-      <h3 class="section-title">Zerodha</h3>
-      <div class="card">
-        <div class="row-between">
-          <div>
-            <div class="s-title" id="connState">Not connected</div>
-            <div class="s-sub" id="connSub">Connect to pull your live holdings.</div>
+      <div class="set-sec collapsed" id="set-zerodha">
+        <button class="set-head" type="button" onclick="PG.toggleSet('zerodha')"><span>Zerodha</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card">
+            <div class="row-between">
+              <div>
+                <div class="s-title" id="connState">Not connected</div>
+                <div class="s-sub" id="connSub">Connect to pull your live holdings.</div>
+              </div>
+              <button class="primary-btn" id="connBtn" onclick="PG.sync(event)">Connect</button>
+            </div>
+            <div style="margin-top:14px">
+              <div class="s-title">Worker access code</div>
+              <div class="s-sub" style="margin-bottom:8px">The APP_KEY you set on the Worker (needed to fetch holdings).</div>
+              <div class="backup-row">
+                <input type="password" id="appKeyInput" class="code-input" placeholder="Enter APP_KEY" autocomplete="off">
+                <button class="ghost-btn" onclick="PG.saveAppKey()">Save</button>
+              </div>
+            </div>
+            <div class="row-between" style="margin-top:14px">
+              <div><div class="s-title">Demo data</div><div class="s-sub">Explore with sample holdings.</div></div>
+              <button class="ghost-btn" onclick="PG.loadDemo()">Load demo</button>
+            </div>
           </div>
-          <button class="primary-btn" id="connBtn" onclick="PG.sync(event)">Connect</button>
         </div>
-        <div style="margin-top:14px">
-          <div class="s-title">Worker access code</div>
-          <div class="s-sub" style="margin-bottom:8px">The APP_KEY you set on the Worker (needed to fetch holdings).</div>
-          <div class="backup-row">
-            <input type="password" id="appKeyInput" class="code-input" placeholder="Enter APP_KEY" autocomplete="off">
-            <button class="ghost-btn" onclick="PG.saveAppKey()">Save</button>
+      </div>
+
+      <div class="set-sec" id="set-zones">
+        <button class="set-head" type="button" onclick="PG.toggleSet('zones')"><span>Sectors &amp; zones</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card">
+            <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
+            <div id="sectorEditor"></div>
           </div>
         </div>
-        <div class="row-between" style="margin-top:14px">
-          <div><div class="s-title">Demo data</div><div class="s-sub">Explore with sample holdings.</div></div>
-          <button class="ghost-btn" onclick="PG.loadDemo()">Load demo</button>
+      </div>
+
+      <div class="set-sec collapsed" id="set-backup">
+        <button class="set-head" type="button" onclick="PG.toggleSet('backup')"><span>Backup</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card">
+            <div class="backup-row">
+              <button class="ghost-btn" onclick="PG.exportJson()">Export JSON</button>
+              <label class="ghost-btn" for="importFile">Import JSON</label>
+              <input type="file" id="importFile" accept="application/json,.json" hidden>
+            </div>
+            <div class="s-sub" style="margin-top:8px">JSON is a full backup (holdings + your sector &amp; zone settings) you can restore on any device.</div>
+          </div>
         </div>
       </div>
 
-      <h3 class="section-title">Sectors &amp; zones</h3>
-      <div class="card">
-        <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
-        <div id="sectorEditor"></div>
-      </div>
-
-      <h3 class="section-title">Backup</h3>
-      <div class="card">
-        <div class="backup-row">
-          <button class="ghost-btn" onclick="PG.exportJson()">Export JSON</button>
-          <label class="ghost-btn" for="importFile">Import JSON</label>
-          <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <div class="set-sec collapsed" id="set-about">
+        <button class="set-head" type="button" onclick="PG.toggleSet('about')"><span>About</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card s-sub" id="aboutBox"></div>
         </div>
-        <div class="s-sub" style="margin-top:8px">JSON is a full backup (holdings + your sector assignments) you can restore on any device.</div>
       </div>
-
-      <h3 class="section-title">About</h3>
-      <div class="card s-sub" id="aboutBox"></div>
     </div>
   </main>
 

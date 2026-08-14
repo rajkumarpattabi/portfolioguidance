@@ -503,6 +503,7 @@
     renderAction();
   }
   function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
+  function toggleSet(key) { var s = el('set-' + key); if (s) s.classList.toggle('collapsed'); }
 
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
@@ -817,7 +818,7 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
-    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleSub: toggleSub
+    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

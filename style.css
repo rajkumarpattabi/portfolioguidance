@@ -202,6 +202,15 @@ nav button.active{color:var(--accent)}
 .ss-sym{font-size:10.5px;font-weight:600;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ss-wt{font-size:10.5px;font-weight:700;color:var(--mut)}
 
+/* collapsible settings sections */
+.set-sec{margin-top:20px}
+.set-sec:first-child{margin-top:4px}
+.set-head{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
+  color:var(--txt);font-size:14px;font-weight:700;padding:2px 0 10px;cursor:pointer;text-align:left}
+.set-caret{color:var(--mut);font-size:12px;transition:transform .18s}
+.set-sec.collapsed .set-caret{transform:rotate(-90deg)}
+.set-sec.collapsed .set-body{display:none}
+
 /* sectors & zones table */
 .zt-head,.zt-row{display:grid;grid-template-columns:1fr 1.25fr 58px 58px;gap:6px;align-items:center}
 .zt-head{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:2px}
