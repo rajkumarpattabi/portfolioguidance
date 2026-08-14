@@ -101,20 +101,22 @@
 
       <!-- Add / Average -->
       <div class="card calc-panel" id="panel-add">
-        <label class="fld-label">Buy price (₹)</label>
-        <input type="number" id="buyPrice" inputmode="decimal" placeholder="defaults to market price" oninput="PG.calc()">
-        <div class="add-fields">
+        <div class="add-grid">
           <div class="af">
-            <label class="fld-label">Intended avg price (₹)</label>
-            <input type="number" id="inAvg" inputmode="decimal" placeholder="target blended average" oninput="PG.calcAddDrive('avg')">
+            <label class="fld-label">Buy price (₹)</label>
+            <input type="number" id="buyPrice" inputmode="decimal" placeholder="mkt price" oninput="PG.calc()">
           </div>
           <div class="af">
-            <label class="fld-label">Additional quantity</label>
-            <input type="number" id="inQty" inputmode="numeric" placeholder="shares to buy" oninput="PG.calcAddDrive('qty')">
+            <label class="fld-label">Intended avg (₹)</label>
+            <input type="number" id="inAvg" inputmode="decimal" placeholder="target avg" oninput="PG.calcAddDrive('avg')">
           </div>
           <div class="af">
-            <label class="fld-label">Additional investment (₹)</label>
-            <input type="number" id="inAmt" inputmode="decimal" placeholder="amount to deploy" oninput="PG.calcAddDrive('amt')">
+            <label class="fld-label">Add. quantity</label>
+            <input type="number" id="inQty" inputmode="numeric" placeholder="shares" oninput="PG.calcAddDrive('qty')">
+          </div>
+          <div class="af">
+            <label class="fld-label">Add. investment (₹)</label>
+            <input type="number" id="inAmt" inputmode="decimal" placeholder="amount" oninput="PG.calcAddDrive('amt')">
           </div>
         </div>
         <div class="result" id="addResult"></div>
