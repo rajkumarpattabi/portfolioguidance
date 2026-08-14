@@ -48,6 +48,9 @@
   function money(n) { return '₹' + inr2.format(n || 0); }
   function money2(n) { return '₹' + inr2.format(n || 0); }
   function signMoney(n) { return (n >= 0 ? '+' : '−') + '₹' + inr2.format(Math.abs(n || 0)); }
+  function money0(n) { return '₹' + inr0.format(Math.round(n || 0)); }              // whole rupees (header)
+  function signMoney0(n) { return (n >= 0 ? '+' : '−') + '₹' + inr0.format(Math.abs(Math.round(n || 0))); }
+  function r2(n) { return Math.round((n || 0) * 100) / 100; }
   function pct(n) { return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%'; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
   function el(id) { return document.getElementById(id); }
@@ -119,10 +122,10 @@
     var pnlCls = t.pnl >= 0 ? 'up' : 'down';
     var dayCls = t.day >= 0 ? 'up' : 'down';
     bar.innerHTML =
-      '<div class="sm-item"><span class="sm-k">Value</span><span class="sm-v">' + money(t.value) + '</span></div>' +
-      '<div class="sm-item"><span class="sm-k">Invested</span><span class="sm-v">' + money(t.invested) + '</span></div>' +
-      '<div class="sm-item"><span class="sm-k">P&amp;L</span><span class="sm-v ' + pnlCls + '">' + signMoney(t.pnl) + ' <em>[' + pct(t.pnlPct) + ']</em></span></div>' +
-      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney(t.day) + ' <em>(' + pct(t.dayPct) + ')</em></span></div>';
+      '<div class="sm-item"><span class="sm-k">Value</span><span class="sm-v">' + money0(t.value) + '</span></div>' +
+      '<div class="sm-item"><span class="sm-k">Invested</span><span class="sm-v">' + money0(t.invested) + '</span></div>' +
+      '<div class="sm-item"><span class="sm-k">P&amp;L</span><span class="sm-v ' + pnlCls + '">' + signMoney0(t.pnl) + ' <em>[' + pct(t.pnlPct) + ']</em></span></div>' +
+      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney0(t.day) + ' <em>(' + pct(t.dayPct) + ')</em></span></div>';
   }
 
   function renderDash() {
@@ -310,7 +313,7 @@
   function calcPickStock(sym) {
     state.calcSym = sym;
     var h = state.holdings.find(function (x) { return x.symbol === sym; });
-    if (h) { el('calcQty').value = h.qty; el('calcAvg').value = h.avg; el('calcLtp').value = h.ltp; el('buyPrice').value = h.ltp; }
+    if (h) { el('calcQty').value = h.qty; el('calcAvg').value = r2(h.avg); el('calcLtp').value = r2(h.ltp); el('buyPrice').value = r2(h.ltp); }
     state.addDriver = null;
     ['inAvg', 'inQty', 'inAmt'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
     calc();
