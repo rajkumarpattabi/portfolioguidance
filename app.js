@@ -229,7 +229,12 @@
     updateSortArrows();
 
     var t = totals();
-    var secInv = {}; bySector().forEach(function (s) { secInv[s.sector] = s.value; });
+    var secInv = {}, secVal = {};
+    state.holdings.forEach(function (h) {
+      var s = sectorOf(h.symbol);
+      secInv[s] = (secInv[s] || 0) + h.qty * h.avg;
+      secVal[s] = (secVal[s] || 0) + h.qty * h.ltp;
+    });
     function heRow(label, val, c) {
       return '<div class="he-row"><span class="he-l">' + label + '</span><span class="he-v' + (c ? ' ' + c : '') + '">' + val + '</span></div>';
     }
@@ -240,8 +245,10 @@
       var dcls = h.day >= 0 ? 'up' : 'down';
 
       if (state.holdExpanded === h.symbol) {
-        var pw = t.invested ? h.invested / t.invested * 100 : 0;
-        var sw = secInv[sec] ? h.invested / secInv[sec] * 100 : 0;
+        var pwInv = t.invested ? h.invested / t.invested * 100 : 0;
+        var pwVal = t.value ? h.value / t.value * 100 : 0;
+        var swInv = secInv[sec] ? h.invested / secInv[sec] * 100 : 0;
+        var swVal = secVal[sec] ? h.value / secVal[sec] * 100 : 0;
         return '<div class="hold-exp" onclick="PG.toggleHold(\'' + esc(h.symbol) + '\')">' +
           '<div class="he-head">' +
             '<span class="he-sym">' + esc(h.symbol) + '</span>' +
@@ -256,8 +263,11 @@
             heRow('Current value', money(h.value)) +
             heRow('Overall P&amp;L', signMoney(h.pnl) + ' [' + pct(h.pnlPct) + ']', cls) +
             heRow("Day's P&amp;L", signMoney(h.day) + ' (' + pct(h.dayPct) + ')', dcls) +
-            heRow('Portfolio weightage', pw.toFixed(1) + '%') +
-            heRow('Weightage in ' + esc(sec), sw.toFixed(1) + '%') +
+            '<div class="he-wtblock">' +
+              '<div class="he-wt-r head"><span class="c1">Weightage</span><span>Invested</span><span>Value</span></div>' +
+              '<div class="he-wt-r"><span class="c1">In ' + esc(sec) + '</span><span>' + swInv.toFixed(1) + '%</span><span>' + swVal.toFixed(1) + '%</span></div>' +
+              '<div class="he-wt-r"><span class="c1">In portfolio</span><span>' + pwInv.toFixed(1) + '%</span><span>' + pwVal.toFixed(1) + '%</span></div>' +
+            '</div>' +
           '</div>' +
         '</div>';
       }
