@@ -24,7 +24,7 @@
     overrides: load(K.overrides, {}),        // {symbol: sector}
     meta: load(K.meta, { lastSync: 0, source: '' }),
     zones: load(K.zones, {}),
-    actionOpen: { buy: true, sell: true },
+    subOpen: {},
     view: 'dash',
     holdSort: 'value',
     holdDir: 'desc',
@@ -502,7 +502,7 @@
     save(K.zones, state.zones);
     renderAction();
   }
-  function toggleZone(key) { state.actionOpen[key] = !state.actionOpen[key]; renderAction(); }
+  function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
 
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
@@ -537,17 +537,21 @@
   }
 
   function zoneHtml(title, key, count, subs) {
-    var open = state.actionOpen[key] !== false;
     var subHtml = subs.map(function (s) {
-      var rows = s[1].length ? s[1].map(function (it) { return actionRow(it, key); }).join('') : '<div class="az-none">—</div>';
-      return '<div class="az-sub"><div class="az-sub-h">' + s[0] + ' <span class="az-cnt">' + s[1].length + '</span></div>' + rows + '</div>';
+      var name = s[0], items = s[1], sk = key + ':' + name;
+      var open = state.subOpen[sk] !== false;
+      var rows = items.length ? items.map(function (it) { return actionRow(it, key); }).join('') : '<div class="az-none">—</div>';
+      return '<div class="az-sub' + (open ? ' open' : '') + '">' +
+        '<button class="az-sub-h" type="button" onclick="PG.toggleSub(\'' + sk + '\')">' +
+          '<span>' + name + ' <span class="az-cnt">' + items.length + '</span></span>' +
+          '<span class="az-scaret">▾</span>' +
+        '</button>' +
+        '<div class="az-sub-body"' + (open ? '' : ' hidden') + '>' + rows + '</div>' +
+      '</div>';
     }).join('');
     return '<div class="az-zone">' +
-      '<button class="az-head" type="button" onclick="PG.toggleZone(\'' + key + '\')">' +
-        '<span>' + title + ' <span class="az-zcnt">' + count + '</span></span>' +
-        '<span class="az-caret' + (open ? ' open' : '') + '">▾</span>' +
-      '</button>' +
-      '<div class="az-body"' + (open ? '' : ' hidden') + '>' + subHtml + '</div>' +
+      '<div class="az-zonehead">' + title + ' <span class="az-zcnt">' + count + '</span></div>' +
+      '<div class="az-body">' + subHtml + '</div>' +
     '</div>';
   }
 
@@ -813,7 +817,7 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
-    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleZone: toggleZone
+    saveAppKey: saveAppKey, exportJson: exportJson, setZone: setZone, toggleSub: toggleSub
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
