@@ -228,7 +228,7 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 .az-zcnt{display:inline-block;min-width:20px;text-align:center;font-size:11px;font-weight:700;color:var(--mut);background:var(--card2);border-radius:999px;padding:1px 7px;margin-left:6px}
 .az-body{padding:0 12px 10px}
 .az-sub-h{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
-  color:var(--txt);font-size:14px;font-weight:800;letter-spacing:.2px;
+  color:var(--accent);font-size:14px;font-weight:800;letter-spacing:.2px;
   padding:11px 2px 7px;border-top:1px solid var(--line);cursor:pointer;text-align:left}
 .az-scaret{color:var(--mut);font-size:12px;transition:transform .18s}
 .az-sub.open .az-scaret{transform:rotate(180deg)}
