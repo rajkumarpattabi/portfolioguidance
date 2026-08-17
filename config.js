@@ -9,5 +9,5 @@
 //   Leave blank to hide the Drive-backup option.
 window.PG_CONFIG = {
   WORKER_URL: "https://portfolioguidance.rajkumar-com.workers.dev",
-  GOOGLE_CLIENT_ID: ""
+  GOOGLE_CLIENT_ID: "715680116797-smju59t38hpmr376dvsu3nv8g1kna7h1.apps.googleusercontent.com"
 };
