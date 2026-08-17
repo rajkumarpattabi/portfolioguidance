@@ -269,9 +269,12 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 .mv-chip.down{color:var(--down)}
 
 /* per-sector P&L summary in expanded allocation */
-.sec-sum{font-size:11.5px;color:var(--mut);padding:2px 2px 7px;border-bottom:1px dashed var(--line);margin-bottom:5px}
-.sec-sum .up{color:var(--up)}
-.sec-sum .down{color:var(--down)}
+.sec-sum{padding:2px 2px 7px;border-bottom:1px dashed var(--line);margin-bottom:5px}
+.ss-sum-row{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding:2px 0}
+.ss-sum-l{color:var(--mut)}
+.ss-sum-v{font-weight:700}
+.ss-sum-v.up{color:var(--up)}
+.ss-sum-v.down{color:var(--down)}
 
 /* nav action badge */
 nav button{position:relative}
