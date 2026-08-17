@@ -167,13 +167,16 @@
       .filter(function (h) { return h.close && Math.abs(h.dayPct) > 0.001; });
     if (!arr.length) { m.innerHTML = ''; m.hidden = true; return; }
     m.hidden = false;
-    var up = arr.filter(function (h) { return h.dayPct > 0; }).sort(function (a, b) { return b.dayPct - a.dayPct; }).slice(0, 3);
-    var down = arr.filter(function (h) { return h.dayPct < 0; }).sort(function (a, b) { return a.dayPct - b.dayPct; }).slice(0, 3);
+    var up = arr.filter(function (h) { return h.dayPct > 0; }).sort(function (a, b) { return b.dayPct - a.dayPct; });
+    var down = arr.filter(function (h) { return h.dayPct < 0; }).sort(function (a, b) { return a.dayPct - b.dayPct; });
     function chip(h) {
       return '<span class="mv-chip ' + (h.dayPct >= 0 ? 'up' : 'down') + '" onclick="PG.openCalc(\'' + esc(h.symbol) + '\')">' +
         esc(h.symbol) + ' <b>' + pct(h.dayPct) + '</b></span>';
     }
-    m.innerHTML = '<div class="mv-title">Today\'s movers</div><div class="mv-chips">' + up.map(chip).join('') + down.map(chip).join('') + '</div>';
+    m.innerHTML = '<div class="mv-title">Today\'s movers</div><div class="mv-cols">' +
+      '<div class="mv-col">' + up.map(chip).join('') + '</div>' +
+      '<div class="mv-col">' + down.map(chip).join('') + '</div>' +
+    '</div>';
   }
 
   function updateBasisToggle() {

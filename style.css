@@ -260,7 +260,8 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 /* today's movers */
 #moversStrip{margin-top:12px}
 .mv-title{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px}
-.mv-chips{display:flex;flex-wrap:wrap;gap:6px}
+.mv-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.mv-col{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .mv-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--card);border:1px solid var(--line);cursor:pointer;white-space:nowrap}
 .mv-chip b{font-weight:700}
 .mv-chip.up{color:var(--up)}
