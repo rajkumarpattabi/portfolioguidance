@@ -17,7 +17,8 @@
     meta: 'PG_META',
     appkey: 'PG_APPKEY',
     zones: 'PG_ZONES',
-    ui: 'PG_UI'
+    ui: 'PG_UI',
+    gdrive: 'PG_GDRIVE'
   };
 
   var UI = load(K.ui, {});
@@ -26,6 +27,7 @@
     overrides: load(K.overrides, {}),        // {symbol: sector}
     meta: load(K.meta, { lastSync: 0, source: '' }),
     zones: load(K.zones, {}),
+    gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
     view: UI.view || 'dash',
     holdSort: UI.holdSort || 'value',
@@ -535,6 +537,22 @@
       se.innerHTML = '<div class="zt-head"><span>Stock</span><span>Sector</span><span>Buy</span><span>Sell</span></div>' + rows;
     }
 
+    var gsub = el('gdriveSub'), grow = el('gdriveRow');
+    if (gsub && grow) {
+      if (!GID) {
+        gsub.textContent = 'Add your Google client ID (GOOGLE_CLIENT_ID) in config.js to enable Drive backup.';
+        grow.innerHTML = '';
+      } else if (!state.gdrive.enabled) {
+        gsub.textContent = 'Keep your holdings, targets and sector edits safe in your Google Drive.';
+        grow.innerHTML = '<button class="ghost-btn" onclick="PG.gConnect()">Connect Google Drive</button>';
+      } else {
+        gsub.textContent = state.gdrive.lastBackup ? ('Auto-backup on · last backed up ' + timeAgo(state.gdrive.lastBackup)) : 'Connected · auto-backup on.';
+        grow.innerHTML = '<button class="ghost-btn" onclick="PG.gBackup(true)">Back up now</button>' +
+          '<button class="ghost-btn" onclick="PG.gRestore()">Restore</button>' +
+          '<button class="ghost-btn" onclick="PG.gDisconnect()">Disconnect</button>';
+      }
+    }
+
     el('aboutBox').innerHTML =
       'PortfolioGuidance · a private PWA. Holdings stay in this device and your backups only.<br>' +
       'Sector map: ' + Object.keys(SEC.MAP).length + ' bundled symbols across ' + (SEC.LIST.length - 1) + ' sectors.<br>' +
@@ -557,6 +575,7 @@
     if (z.buy == null && z.sell == null) delete state.zones[sym]; else state.zones[sym] = z;
     save(K.zones, state.zones);
     renderAction();
+    scheduleAutoBackup();
   }
   function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
   function toggleSet(key) { var s = el('set-' + key); if (s) s.classList.toggle('collapsed'); }
@@ -679,6 +698,7 @@
       if (SEC.MAP[sheetSym] === s) delete state.overrides[sheetSym];
       else state.overrides[sheetSym] = s;
       save(K.overrides, state.overrides);
+      scheduleAutoBackup();
     }
     closeSectorSheet();
     render();
@@ -816,6 +836,7 @@
     state.meta = { lastSync: Date.now(), source: source };
     save(K.holdings, state.holdings); save(K.meta, state.meta);
     render();
+    scheduleAutoBackup();
   }
 
   // ---------- demo / backup ----------
@@ -836,10 +857,21 @@
     setView('dash');
   }
 
+  function backupPayload() {
+    return { app: 'PortfolioGuidance', version: 3, exportedAt: new Date().toISOString(),
+      holdings: state.holdings, overrides: state.overrides, zones: state.zones, ui: load(K.ui, {}), meta: state.meta };
+  }
+  function applyBackup(j) {
+    if (j.holdings) { state.holdings = j.holdings; save(K.holdings, state.holdings); }
+    if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
+    if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
+    if (j.ui) { save(K.ui, j.ui); }
+    if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
+    render();
+  }
+
   function exportJson() {
-    var payload = { app: 'PortfolioGuidance', version: 2, exportedAt: new Date().toISOString(),
-      holdings: state.holdings, overrides: state.overrides, zones: state.zones, meta: state.meta };
-    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var blob = new Blob([JSON.stringify(backupPayload(), null, 2)], { type: 'application/json' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'portfolioguidance-backup.json'; a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
@@ -861,16 +893,114 @@
   function importJson(file) {
     var r = new FileReader();
     r.onload = function () {
-      try {
-        var j = JSON.parse(r.result);
-        if (j.holdings) { state.holdings = j.holdings; save(K.holdings, state.holdings); }
-        if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
-        if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
-        if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
-        render(); toast('Backup restored.');
-      } catch (e) { toast('That file was not a valid backup.'); }
+      try { applyBackup(JSON.parse(r.result)); toast('Backup restored.'); }
+      catch (e) { toast('That file was not a valid backup.'); }
     };
     r.readAsText(file);
+  }
+
+  // ---------- Google Drive backup ----------
+  var GID = (CFG.GOOGLE_CLIENT_ID || '');
+  var gis = { token: '', exp: 0, client: null, fileId: null };
+  var BK_NAME = 'portfolioguidance-backup.json';
+
+  function gisLoad() {
+    return new Promise(function (res, rej) {
+      if (window.google && google.accounts && google.accounts.oauth2) return res();
+      var ex = el('gis-script');
+      if (ex) { ex.addEventListener('load', function () { res(); }); ex.addEventListener('error', function () { rej(); }); return; }
+      var s = document.createElement('script'); s.id = 'gis-script';
+      s.src = 'https://accounts.google.com/gsi/client'; s.async = true; s.defer = true;
+      s.onload = function () { res(); }; s.onerror = function () { rej(); };
+      document.head.appendChild(s);
+    });
+  }
+  function gToken(interactive) {
+    return gisLoad().then(function () {
+      if (gis.token && Date.now() < gis.exp - 60000) return gis.token;
+      return new Promise(function (resolve) {
+        try {
+          if (!gis.client) {
+            gis.client = google.accounts.oauth2.initTokenClient({
+              client_id: GID, scope: 'https://www.googleapis.com/auth/drive.file', callback: function () {}
+            });
+          }
+          gis.client.callback = function (resp) {
+            if (resp && resp.access_token) { gis.token = resp.access_token; gis.exp = Date.now() + (resp.expires_in ? resp.expires_in * 1000 : 3000000); resolve(gis.token); }
+            else resolve(null);
+          };
+          gis.client.error_callback = function () { resolve(null); };
+          gis.client.requestAccessToken({ prompt: interactive ? '' : 'none' });
+        } catch (e) { resolve(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function driveFindFile(token) {
+    if (gis.fileId) return Promise.resolve(gis.fileId);
+    var q = encodeURIComponent("name='" + BK_NAME + "' and trashed=false");
+    return fetch('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id)&q=' + q, { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { gis.fileId = (j.files && j.files[0] && j.files[0].id) || null; return gis.fileId; });
+  }
+  function driveUpload(token, obj) {
+    var body = JSON.stringify(obj);
+    return driveFindFile(token).then(function (id) {
+      if (id) {
+        return fetch('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media', {
+          method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body
+        });
+      }
+      var boundary = 'pgb' + Date.now();
+      var meta = JSON.stringify({ name: BK_NAME, mimeType: 'application/json' });
+      var multipart = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+        '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
+      return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart
+      }).then(function (r) { return r.json(); }).then(function (j) { if (j && j.id) gis.fileId = j.id; return j; });
+    });
+  }
+  function gBackup(interactive) {
+    if (!GID) { if (interactive) toast('Add GOOGLE_CLIENT_ID in config.js first.'); return; }
+    gToken(interactive).then(function (token) {
+      if (!token) { if (interactive) toast('Google sign-in needed to back up.'); return; }
+      driveUpload(token, backupPayload()).then(function () {
+        state.gdrive.enabled = true; state.gdrive.lastBackup = Date.now();
+        save(K.gdrive, state.gdrive); renderSettings();
+        if (interactive) toast('Backed up to Google Drive.');
+      }).catch(function () { if (interactive) toast('Drive backup failed.'); });
+    });
+  }
+  function gRestore() {
+    if (!GID) { toast('Add GOOGLE_CLIENT_ID in config.js first.'); return; }
+    gToken(true).then(function (token) {
+      if (!token) { toast('Google sign-in needed to restore.'); return; }
+      driveFindFile(token).then(function (id) {
+        if (!id) { toast('No Drive backup found yet.'); return; }
+        fetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media', { headers: { Authorization: 'Bearer ' + token } })
+          .then(function (r) { return r.json(); })
+          .then(function (j) { applyBackup(j); toast('Restored from Google Drive.'); })
+          .catch(function () { toast('Could not read the Drive backup.'); });
+      });
+    });
+  }
+  function gConnect() {
+    if (!GID) { toast('Add GOOGLE_CLIENT_ID in config.js first.'); return; }
+    gToken(true).then(function (token) {
+      if (!token) { toast('Google sign-in cancelled.'); return; }
+      state.gdrive.enabled = true; save(K.gdrive, state.gdrive);
+      gBackup(true);
+    });
+  }
+  function gDisconnect() {
+    state.gdrive.enabled = false; save(K.gdrive, state.gdrive);
+    try { if (gis.token && window.google) google.accounts.oauth2.revoke(gis.token, function () {}); } catch (e) {}
+    gis.token = ''; gis.exp = 0; renderSettings(); toast('Drive backup turned off.');
+  }
+  var autoBkTimer;
+  function scheduleAutoBackup() {
+    if (!GID || !state.gdrive.enabled) return;
+    clearTimeout(autoBkTimer);
+    autoBkTimer = setTimeout(function () { gBackup(false); }, 4000);
   }
 
   // ---------- ui plumbing ----------
@@ -938,7 +1068,8 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
-    saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis
+    saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
+    gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect
   };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
