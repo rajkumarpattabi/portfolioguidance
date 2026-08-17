@@ -230,6 +230,7 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 .az-sub-h{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
   color:var(--accent);font-size:14px;font-weight:800;letter-spacing:.2px;
   padding:11px 2px 7px;border-top:1px solid var(--line);cursor:pointer;text-align:left}
+.az-sub-body{padding-left:10px}
 .az-scaret{color:var(--mut);font-size:12px;transition:transform .18s}
 .az-sub.open .az-scaret{transform:rotate(180deg)}
 .az-cnt{color:var(--mut2);font-weight:600}
