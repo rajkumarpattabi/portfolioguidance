@@ -138,11 +138,11 @@
     el('dashEmpty').hidden = has;
     var t = totals();
     renderFresh();
-    el('donutTotal').textContent = has ? money(t.value) : '—';
+    el('donutTotal').textContent = has ? money0(t.value) : '—';
     var pe = el('donutPnl'), pc = el('donutPct');
     if (has) {
       var c = 'dc-sub ' + (t.pnl >= 0 ? 'up' : 'down');
-      pe.textContent = signMoney(t.pnl); pe.className = c;
+      pe.textContent = signMoney0(t.pnl); pe.className = c;
       if (pc) { pc.textContent = pct(t.pnlPct); pc.className = 'dc-pct ' + (t.pnl >= 0 ? 'up' : 'down'); }
     } else { pe.textContent = ''; if (pc) pc.textContent = ''; }
 
