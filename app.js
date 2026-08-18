@@ -169,16 +169,13 @@
       .filter(function (h) { return h.close && Math.abs(h.dayPct) > 0.001; });
     if (!arr.length) { m.innerHTML = ''; m.hidden = true; return; }
     m.hidden = false;
-    var up = arr.filter(function (h) { return h.dayPct > 0; }).sort(function (a, b) { return b.dayPct - a.dayPct; }).slice(0, 3);
-    var down = arr.filter(function (h) { return h.dayPct < 0; }).sort(function (a, b) { return a.dayPct - b.dayPct; }).slice(0, 3);
-    function chip(h) {
-      return '<span class="mv-chip ' + (h.dayPct >= 0 ? 'up' : 'down') + '" onclick="PG.openCalc(\'' + esc(h.symbol) + '\')">' +
-        esc(h.symbol) + ' <b>' + pct(h.dayPct) + '</b></span>';
+    var up = arr.filter(function (h) { return h.dayPct > 0; }).sort(function (a, b) { return b.dayPct - a.dayPct; }).slice(0, 5);
+    var down = arr.filter(function (h) { return h.dayPct < 0; }).sort(function (a, b) { return a.dayPct - b.dayPct; }).slice(0, 5);
+    function row(h) {
+      return '<div class="mv-row ' + (h.dayPct >= 0 ? 'up' : 'down') + '" onclick="PG.openCalc(\'' + esc(h.symbol) + '\')">' +
+        '<span class="mv-sym">' + esc(h.symbol) + '</span><span class="mv-pct">' + pct(h.dayPct) + '</span></div>';
     }
-    m.innerHTML = '<div class="mv-title">Today\'s movers</div><div class="mv-cols">' +
-      '<div class="mv-col">' + up.map(chip).join('') + '</div>' +
-      '<div class="mv-col">' + down.map(chip).join('') + '</div>' +
-    '</div>';
+    m.innerHTML = '<div class="mv-title">Today\'s movers</div><div class="mv-list">' + up.map(row).join('') + down.map(row).join('') + '</div>';
   }
 
   function updateBasisToggle() {
@@ -239,7 +236,7 @@
   function drawDonut(segs, total) {
     var c = el('donut'); if (!c) return;
     var dpr = window.devicePixelRatio || 1;
-    var CSS = 220; // css px
+    var CSS = 188; // css px
     c.style.width = CSS + 'px'; c.style.height = CSS + 'px';
     c.width = CSS * dpr; c.height = CSS * dpr;
     var ctx = c.getContext('2d');
@@ -936,24 +933,30 @@
       });
     }).catch(function () { return null; });
   }
+  function driveJson(r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (!r.ok) { throw new Error((j.error && (j.error.message || j.error)) || ('HTTP ' + r.status)); }
+      return j;
+    });
+  }
   function ensureFolder(token) {
     if (gis.folderId) return Promise.resolve(gis.folderId);
     var q = encodeURIComponent("mimeType='application/vnd.google-apps.folder' and name='" + BK_FOLDER + "' and trashed=false");
     return fetch('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id)&q=' + q, { headers: { Authorization: 'Bearer ' + token } })
-      .then(function (r) { return r.json(); })
+      .then(driveJson)
       .then(function (j) {
         if (j.files && j.files[0]) { gis.folderId = j.files[0].id; return gis.folderId; }
         return fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
           method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: BK_FOLDER, mimeType: 'application/vnd.google-apps.folder' })
-        }).then(function (r) { return r.json(); }).then(function (f) { gis.folderId = f.id; return f.id; });
+        }).then(driveJson).then(function (f) { gis.folderId = f.id; return f.id; });
       });
   }
   function driveFindFile(token) {
     if (gis.file) return Promise.resolve(gis.file);
     var q = encodeURIComponent("name='" + BK_NAME + "' and trashed=false");
     return fetch('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id,parents)&q=' + q, { headers: { Authorization: 'Bearer ' + token } })
-      .then(function (r) { return r.json(); })
+      .then(driveJson)
       .then(function (j) { gis.file = (j.files && j.files[0]) || null; return gis.file; });
   }
   function driveUpload(token, obj) {
@@ -961,18 +964,15 @@
     return ensureFolder(token).then(function (folderId) {
       return driveFindFile(token).then(function (file) {
         if (file && file.id) {
-          var patch = fetch('https://www.googleapis.com/upload/drive/v3/files/' + file.id + '?uploadType=media', {
+          return fetch('https://www.googleapis.com/upload/drive/v3/files/' + file.id + '?uploadType=media', {
             method: 'PATCH', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body
-          });
-          if (!(file.parents && file.parents.indexOf(folderId) >= 0)) {   // migrate into the folder
+          }).then(driveJson).then(function () {
+            if (file.parents && file.parents.indexOf(folderId) >= 0) return;   // already in folder
             var remove = (file.parents || []).join(',');
-            return patch.then(function () {
-              return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '?addParents=' + folderId + (remove ? '&removeParents=' + remove : '') + '&fields=id,parents', {
-                method: 'PATCH', headers: { Authorization: 'Bearer ' + token }
-              });
-            }).then(function () { file.parents = [folderId]; });
-          }
-          return patch;
+            return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '?addParents=' + folderId + (remove ? '&removeParents=' + remove : '') + '&fields=id,parents', {
+              method: 'PATCH', headers: { Authorization: 'Bearer ' + token }
+            }).then(driveJson).then(function () { file.parents = [folderId]; });
+          });
         }
         var boundary = 'pgb' + Date.now();
         var meta = JSON.stringify({ name: BK_NAME, mimeType: 'application/json', parents: [folderId] });
@@ -980,7 +980,7 @@
           '\r\n--' + boundary + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + boundary + '--';
         return fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
           method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'multipart/related; boundary=' + boundary }, body: multipart
-        }).then(function (r) { return r.json(); }).then(function (f) { if (f && f.id) gis.file = { id: f.id, parents: [folderId] }; return f; });
+        }).then(driveJson).then(function (f) { if (f && f.id) gis.file = { id: f.id, parents: [folderId] }; return f; });
       });
     });
   }
@@ -992,7 +992,7 @@
         state.gdrive.enabled = true; state.gdrive.lastBackup = Date.now();
         save(K.gdrive, state.gdrive); renderSettings();
         if (interactive) toast('Backed up to Google Drive.');
-      }).catch(function () { if (interactive) toast('Drive backup failed.'); });
+      }).catch(function (e) { if (interactive) toast('Drive backup failed: ' + (e && e.message ? e.message : e)); });
     });
   }
   function gRestore() {
@@ -1001,11 +1001,9 @@
       if (!token) { toast('Google sign-in needed to restore.'); return; }
       driveFindFile(token).then(function (file) {
         if (!file || !file.id) { toast('No Drive backup found yet.'); return; }
-        fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media', { headers: { Authorization: 'Bearer ' + token } })
-          .then(function (r) { return r.json(); })
-          .then(function (j) { applyBackup(j); toast('Restored from Google Drive.'); })
-          .catch(function () { toast('Could not read the Drive backup.'); });
-      });
+        return fetch('https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media', { headers: { Authorization: 'Bearer ' + token } })
+          .then(driveJson).then(function (j) { applyBackup(j); toast('Restored from Google Drive.'); });
+      }).catch(function (e) { toast('Drive restore failed: ' + (e && e.message ? e.message : e)); });
     });
   }
   function gConnect() {

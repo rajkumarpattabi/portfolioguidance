@@ -33,16 +33,18 @@
     <!-- DASHBOARD -->
     <div class="view active" id="v-dash">
       <div class="freshline" id="freshLine" hidden></div>
-      <div class="donut-wrap">
-        <canvas id="donut" width="440" height="440"></canvas>
-        <div class="donut-center">
-          <span class="dc-label">Total value</span>
-          <span class="dc-value" id="donutTotal">—</span>
-          <span class="dc-sub" id="donutPnl"></span>
-          <span class="dc-pct" id="donutPct"></span>
+      <div class="dash-top">
+        <div class="donut-wrap">
+          <canvas id="donut" width="440" height="440"></canvas>
+          <div class="donut-center">
+            <span class="dc-label">Total value</span>
+            <span class="dc-value" id="donutTotal">—</span>
+            <span class="dc-sub" id="donutPnl"></span>
+            <span class="dc-pct" id="donutPct"></span>
+          </div>
         </div>
+        <div id="moversStrip" hidden></div>
       </div>
-      <div id="moversStrip" hidden></div>
       <div class="alloc-head">
         <h3 class="section-title" style="margin:0">Sectoral allocation</h3>
         <div class="seg" id="allocBasis">

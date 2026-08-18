@@ -44,12 +44,13 @@ main{flex:1;padding:16px}
   border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:12px}
 
 /* donut */
-.donut-wrap{position:relative;display:flex;justify-content:center;align-items:center;padding:8px 0 4px}
+.dash-top{display:flex;gap:10px;align-items:center;margin-top:4px}
+.donut-wrap{position:relative;display:flex;flex:none;justify-content:center;align-items:center;padding:2px 0}
 .donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
-.dc-label{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
-.dc-value{font-size:23px;font-weight:800;margin-top:2px}
-.dc-sub{font-size:12px;font-weight:700;margin-top:3px}
-.dc-pct{font-size:11px;font-weight:700;margin-top:1px}
+.dc-label{font-size:9px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+.dc-value{font-size:18px;font-weight:800;margin-top:2px}
+.dc-sub{font-size:11px;font-weight:700;margin-top:2px}
+.dc-pct{font-size:10px;font-weight:700;margin-top:1px}
 .dc-pct.up{color:var(--up)}.dc-pct.down{color:var(--down)}
 
 /* allocation list */
@@ -259,14 +260,15 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 #allocBasis .seg-btn{font-size:11px;padding:6px 12px}
 
 /* today's movers */
-#moversStrip{margin-top:12px}
-.mv-title{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px}
-.mv-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.mv-col{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.mv-chip{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--card);border:1px solid var(--line);cursor:pointer;white-space:nowrap}
-.mv-chip b{font-weight:700}
-.mv-chip.up{color:var(--up)}
-.mv-chip.down{color:var(--down)}
+#moversStrip{flex:1;min-width:0}
+.mv-title{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+.mv-list{display:flex;flex-direction:column;gap:3px}
+.mv-row{display:flex;justify-content:space-between;gap:6px;align-items:center;font-size:11px;font-weight:600;
+  padding:3px 8px;border-radius:7px;background:var(--card);border:1px solid var(--line);cursor:pointer}
+.mv-sym{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-pct{flex:none;font-weight:700}
+.mv-row.up{color:var(--up)}
+.mv-row.down{color:var(--down)}
 
 /* per-sector P&L summary in expanded allocation */
 .sec-sum{padding:2px 2px 7px;border-bottom:1px dashed var(--line);margin-bottom:5px}
