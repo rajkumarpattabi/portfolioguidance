@@ -283,7 +283,7 @@
       if (sa !== sb) return sa < sb ? -1 : 1;
       return a.symbol < b.symbol ? -1 : (a.symbol > b.symbol ? 1 : 0);
     };
-    else { var field = (so === 'day') ? 'dayPct' : so; cmp = function (a, b) { return (a[field] || 0) - (b[field] || 0); }; }
+    else { var field = (so === 'day') ? 'dayPct' : (so === 'pnl') ? 'pnlPct' : so; cmp = function (a, b) { return (a[field] || 0) - (b[field] || 0); }; }
     arr.sort(function (a, b) { return dir * cmp(a, b); });
     updateSortArrows();
 
