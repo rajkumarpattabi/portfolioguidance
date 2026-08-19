@@ -204,9 +204,9 @@
       }).join('');
       var pcls = secPnl >= 0 ? 'up' : 'down';
       var sum = '<div class="sec-sum">' +
-        '<div class="ss-sum-row"><span class="ss-sum-l">Invested</span><span class="ss-sum-v">' + money(secInv) + '</span></div>' +
-        '<div class="ss-sum-row"><span class="ss-sum-l">Value</span><span class="ss-sum-v">' + money(secVal) + '</span></div>' +
-        '<div class="ss-sum-row"><span class="ss-sum-l">P&amp;L</span><span class="ss-sum-v ' + pcls + '">' + signMoney(secPnl) + ' (' + pct(secPct) + ')</span></div>' +
+        '<div class="ss-sum-row"><span class="ss-sum-l">Invested</span><span class="ss-sum-v">' + money0(secInv) + '</span></div>' +
+        '<div class="ss-sum-row"><span class="ss-sum-l">Value</span><span class="ss-sum-v">' + money0(secVal) + '</span></div>' +
+        '<div class="ss-sum-row"><span class="ss-sum-l">P&amp;L</span><span class="ss-sum-v ' + pcls + '">' + money0(Math.abs(secPnl)) + ' (' + Math.abs(secPct).toFixed(1) + '%)</span></div>' +
       '</div>';
       return '<div class="sec-card' + (open ? ' open' : '') + '">' +
         '<button class="sec-head" type="button" onclick="PG.toggleSector(' + i + ')">' +
