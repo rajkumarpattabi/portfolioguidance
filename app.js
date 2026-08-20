@@ -18,7 +18,8 @@
     appkey: 'PG_APPKEY',
     zones: 'PG_ZONES',
     ui: 'PG_UI',
-    gdrive: 'PG_GDRIVE'
+    gdrive: 'PG_GDRIVE',
+    secthresh: 'PG_SECTHRESH'
   };
 
   var UI = load(K.ui, {});
@@ -27,9 +28,11 @@
     overrides: load(K.overrides, {}),        // {symbol: sector}
     meta: load(K.meta, { lastSync: 0, source: '' }),
     zones: load(K.zones, {}),
+    secthresh: load(K.secthresh, {}),      // {sector: maxPct} — invested basis
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
     view: UI.view || 'dash',
+    actionMode: UI.actionMode || 'stock',  // 'stock' | 'sector'
     holdSort: UI.holdSort || 'value',
     holdDir: UI.holdDir || 'desc',
     allocBasis: UI.allocBasis || 'invested',
@@ -40,7 +43,7 @@
     addDriver: null,
     expanded: {}
   };
-  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis }); }
+  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis, actionMode: state.actionMode }); }
 
   function load(k, dflt) {
     try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? dflt : v; }
@@ -110,6 +113,43 @@
     });
     return Object.keys(m).map(function (s) { return { sector: s, value: m[s] }; })
       .sort(function (a, b) { return b.value - a.value; });
+  }
+
+  // ---- sector caps (invested basis) ----
+  function n1(n) { return String(Math.round((n || 0) * 10) / 10); }   // ≤1 decimal, trims .0
+  function heldSectors() {
+    var s = {}; state.holdings.forEach(function (h) { s[sectorOf(h.symbol)] = 1; });
+    return Object.keys(s);
+  }
+  // Held sectors with their invested amount, largest first (stable order for the caps list).
+  function sectorInvestedList() {
+    var m = {};
+    state.holdings.forEach(function (h) { var s = sectorOf(h.symbol); m[s] = (m[s] || 0) + h.qty * h.avg; });
+    return Object.keys(m).map(function (s) { return { sector: s, inv: m[s] }; })
+      .sort(function (a, b) { return b.inv - a.inv; });
+  }
+  // Resolve the effective cap for every held sector.
+  // - explicit: sectors the user typed a value for
+  // - autoSector: the LAST still-blank sector, which absorbs the delta to 100
+  // - caps[sector] = explicit value, or the delta for the auto sector, or null (uncapped)
+  function capInfo() {
+    var list = sectorInvestedList();
+    var explicit = {}, sumExplicit = 0;
+    list.forEach(function (x) {
+      var v = state.secthresh[x.sector];
+      if (v != null && isFinite(v) && v > 0) { explicit[x.sector] = v; sumExplicit += v; }
+    });
+    var blanks = list.filter(function (x) { return explicit[x.sector] == null; });
+    var autoSector = blanks.length ? blanks[blanks.length - 1].sector : null;
+    var remaining = Math.max(0, r2(100 - sumExplicit));
+    var caps = {};
+    list.forEach(function (x) {
+      if (explicit[x.sector] != null) caps[x.sector] = explicit[x.sector];
+      else if (x.sector === autoSector) caps[x.sector] = remaining;
+      else caps[x.sector] = null;
+    });
+    return { list: list, explicit: explicit, caps: caps, autoSector: autoSector,
+             sumExplicit: r2(sumExplicit), remaining: remaining };
   }
 
   // ---------- rendering ----------
@@ -554,6 +594,83 @@
       'PortfolioGuidance · a private PWA. Holdings stay in this device and your backups only.<br>' +
       'Sector map: ' + Object.keys(SEC.MAP).length + ' bundled symbols across ' + (SEC.LIST.length - 1) + ' sectors.<br>' +
       (WORKER ? ('Worker: ' + esc(WORKER)) : 'Worker: not configured (demo mode).');
+
+    renderCaps();
+  }
+
+  // ---- sector caps editor ----
+  function renderCaps() {
+    var wrap = el('capEditor'); if (!wrap) return;
+    if (!state.holdings.length) { wrap.innerHTML = '<div class="s-sub">Load holdings to set sector caps.</div>'; return; }
+    var info = capInfo();
+    var rows = info.list.map(function (x) {
+      var sec = x.sector, explicit = info.explicit[sec], isAuto = sec === info.autoSector;
+      var val = (explicit != null) ? explicit : (isAuto ? info.remaining : '');
+      var cls = 'ct-in' + (explicit == null && isAuto ? ' auto' : '');
+      var tag = (explicit == null && isAuto) ? '<span class="ct-tag">auto</span>' : '';
+      return '<div class="ct-row">' +
+        '<span class="ct-sec" style="color:' + sectorColor(sec) + '">' + esc(sec) + '</span>' +
+        '<div class="ct-inwrap">' +
+          '<input class="' + cls + '" data-sector="' + esc(sec) + '" type="number" inputmode="decimal" min="0" max="100" placeholder="—" value="' + val + '" oninput="PG.setCap(this.getAttribute(\'data-sector\'), this.value)">' +
+          '<span class="ct-pct">%</span>' + tag +
+        '</div>' +
+      '</div>';
+    }).join('');
+    wrap.innerHTML = '<div class="cap-sum" id="capSum"></div>' +
+      '<div class="ct-head"><span>Sector</span><span>Max weightage</span></div>' + rows;
+    refreshCapSum(info);
+  }
+  function refreshCapSum(info) {
+    info = info || capInfo();
+    var e = el('capSum'); if (!e) return;
+    var over = info.sumExplicit > 100.0001;
+    e.innerHTML = 'Allocated <strong>' + n1(info.sumExplicit) + '%</strong> · ' +
+      (info.autoSector
+        ? ('<strong>' + esc(info.autoSector) + '</strong> auto-fills the remaining <strong>' + n1(info.remaining) + '%</strong>')
+        : ('unassigned <strong>' + n1(info.remaining) + '%</strong>')) +
+      (over ? ' <span class="down">· over 100%</span>' : '');
+  }
+  // Update auto-fill markers + summary in place, without rebuilding inputs (keeps focus while typing).
+  function updateCapAuto() {
+    var info = capInfo();
+    var inputs = document.querySelectorAll('#capEditor .ct-in');
+    Array.prototype.forEach.call(inputs, function (inp) {
+      var sec = inp.getAttribute('data-sector'), explicit = info.explicit[sec], isAuto = sec === info.autoSector;
+      var wrap = inp.parentNode, tag = wrap.querySelector('.ct-tag');
+      if (explicit == null && isAuto) {
+        inp.classList.add('auto');
+        if (inp !== document.activeElement) inp.value = info.remaining;
+        if (!tag) { tag = document.createElement('span'); tag.className = 'ct-tag'; tag.textContent = 'auto'; wrap.appendChild(tag); }
+      } else {
+        inp.classList.remove('auto');
+        if (explicit == null && inp !== document.activeElement) inp.value = '';
+        if (tag) tag.parentNode.removeChild(tag);
+      }
+    });
+    refreshCapSum(info);
+  }
+  function setCap(sector, raw) {
+    var parsed = parseFloat(raw);
+    if (!isFinite(parsed) || parsed <= 0) {
+      delete state.secthresh[sector];
+    } else {
+      var others = 0;
+      heldSectors().forEach(function (s) {
+        if (s !== sector) { var e = state.secthresh[s]; if (e != null && isFinite(e) && e > 0) others += e; }
+      });
+      var max = r2(100 - others); if (max < 0) max = 0;
+      var v = parsed > max ? max : parsed;
+      if (v <= 0) { delete state.secthresh[sector]; v = 0; }
+      else state.secthresh[sector] = r2(v);
+      if (v !== parsed) {   // clamped — reflect the corrected value back into the field
+        var ins = document.querySelectorAll('#capEditor .ct-in');
+        Array.prototype.forEach.call(ins, function (inp) { if (inp.getAttribute('data-sector') === sector) inp.value = (v > 0 ? r2(v) : ''); });
+      }
+    }
+    save(K.secthresh, state.secthresh);
+    updateCapAuto();
+    if (state.actionMode === 'sector') renderAction();
+    scheduleAutoBackup();
   }
 
   function timeAgo(ts) {
@@ -586,8 +703,22 @@
 
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
+    updateActionToggle();
     if (!state.holdings.length) { setActionBadge(0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
+    var sz = computeStockZones(), sc = computeSectorCaps();
+    setActionBadge(sz.anyBuy + sz.anySell + sc.overCount);
+    if (state.actionMode === 'sector') renderActionSector(body, sc);
+    else renderActionStock(body, sz);
+  }
 
+  function updateActionToggle() {
+    var w = el('actionMode'); if (!w) return;
+    w.querySelectorAll('.seg-btn').forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-amode') === state.actionMode); });
+  }
+  function setActionMode(m) { state.actionMode = m; saveUI(); renderAction(); }
+
+  // ---- Stock view (per-stock buy/sell zones) ----
+  function computeStockZones() {
     var buy = { deep: [], value: [], acc: [] }, sell = { book: [], trim: [], watch: [] };
     state.holdings.forEach(function (h) {
       var z = state.zones[h.symbol] || {}, sec = sectorOf(h.symbol), ltp = h.ltp;
@@ -604,17 +735,80 @@
     });
     function srt(a) { a.sort(function (x, y) { return y.pct - x.pct; }); }
     [buy.deep, buy.value, buy.acc, sell.book, sell.trim, sell.watch].forEach(srt);
-
-    var anyBuy = buy.deep.length + buy.value.length + buy.acc.length;
-    var anySell = sell.book.length + sell.trim.length + sell.watch.length;
-    setActionBadge(anyBuy + anySell);
-    if (!anyBuy && !anySell) {
+    return { buy: buy, sell: sell,
+      anyBuy: buy.deep.length + buy.value.length + buy.acc.length,
+      anySell: sell.book.length + sell.trim.length + sell.watch.length };
+  }
+  function renderActionStock(body, sz) {
+    if (!sz.anyBuy && !sz.anySell) {
       body.innerHTML = '<div class="empty-note">No stock is in a buy or sell zone right now. Set <strong>Buy</strong> / <strong>Sell</strong> target prices under <strong>Settings → Sectors &amp; zones</strong>, and holdings show up here when the price crosses them.</div>';
       return;
     }
     body.innerHTML =
-      zoneHtml('Buy zone', 'buy', anyBuy, [['Deep Value', buy.deep], ['Value', buy.value], ['Accumulate', buy.acc]]) +
-      zoneHtml('Sell zone', 'sell', anySell, [['Book Profit', sell.book], ['Trim', sell.trim], ['Watch', sell.watch]]);
+      zoneHtml('Buy zone', 'buy', sz.anyBuy, [['Deep Value', sz.buy.deep], ['Value', sz.buy.value], ['Accumulate', sz.buy.acc]]) +
+      zoneHtml('Sell zone', 'sell', sz.anySell, [['Book Profit', sz.sell.book], ['Trim', sz.sell.trim], ['Watch', sz.sell.watch]]);
+  }
+
+  // ---- Sector view (cap rebalancing, invested basis) ----
+  function computeSectorCaps() {
+    var info = capInfo(), totalInv = 0;
+    state.holdings.forEach(function (h) { totalInv += h.qty * h.avg; });
+    var rows = info.list.map(function (x) {
+      var weight = totalInv ? x.inv / totalInv * 100 : 0;
+      var cap = info.caps[x.sector];                       // null = uncapped
+      var amount = cap != null ? x.inv - cap / 100 * totalInv : 0;   // >0 trim, <0 headroom
+      return { sector: x.sector, inv: x.inv, weight: weight, cap: cap,
+               over: cap != null && weight > cap + 0.05, amount: amount };
+    });
+    return { rows: rows, overCount: rows.filter(function (r) { return r.over; }).length,
+             totalInv: totalInv, info: info };
+  }
+  function renderActionSector(body, sc) {
+    var info = sc.info;
+    if (!info.list.length) { body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
+    var rows = sc.rows.slice().sort(function (a, b) {
+      var ra = a.over ? 0 : (a.cap != null ? 1 : 2), rb = b.over ? 0 : (b.cap != null ? 1 : 2);
+      if (ra !== rb) return ra - rb;
+      return b.weight - a.weight;
+    });
+    var overRows = rows.filter(function (r) { return r.over; });
+    var withinRows = rows.filter(function (r) { return !r.over; });
+    var totalTrim = overRows.reduce(function (s, r) { return s + r.amount; }, 0);
+    var hasCaps = Object.keys(info.explicit).length > 0;
+
+    function secRow(r) {
+      var dot = '<span class="alloc-dot" style="background:' + sectorColor(r.sector) + '"></span>';
+      var capTxt = r.cap != null ? ('cap ' + n1(r.cap) + '%') : 'no cap';
+      var left = '<div class="az-l">' + dot + '<span class="az-sym">' + esc(r.sector) + '</span>' +
+        '<span class="az-sec" style="display:block;margin-top:2px">' + n1(r.weight) + '% now · ' + capTxt + '</span></div>';
+      var right;
+      if (r.over) {
+        right = '<div class="az-r"><span class="az-pct down">Trim ' + money0(r.amount) + '</span>' +
+          '<span class="az-meta">' + n1(r.weight - r.cap) + '% over cap</span></div>';
+      } else if (r.cap != null) {
+        right = '<div class="az-r"><span class="az-pct up">Room ' + money0(-r.amount) + '</span>' +
+          '<span class="az-meta">' + n1(r.cap - r.weight) + '% under cap</span></div>';
+      } else {
+        right = '<div class="az-r"><span class="az-pct" style="color:var(--mut)">No cap</span>' +
+          '<span class="az-meta">set one in Settings</span></div>';
+      }
+      return '<div class="az-row nolink">' + left + right + '</div>';
+    }
+
+    var banner = '';
+    if (!hasCaps) {
+      banner = '<div class="empty-note">Set sector caps under <strong>Settings → Sector caps</strong> to get rebalancing guidance. Weights below are on <strong>invested</strong> basis.</div>';
+    } else if (!overRows.length) {
+      banner = '<div class="empty-note" style="border-color:#2b6b47;color:var(--up)">All sectors are within their caps — nothing to rebalance.</div>';
+    }
+    var overZone = overRows.length
+      ? '<div class="az-zone"><div class="az-zonehead">Rebalance <span class="az-zcnt">' + overRows.length + '</span></div>' +
+        '<div class="s-sub" style="padding:0 14px 8px">Total to trim ≈ <strong>' + money0(totalTrim) + '</strong> (invested basis)</div>' +
+        '<div class="az-body">' + overRows.map(secRow).join('') + '</div></div>'
+      : '';
+    var withinZone = '<div class="az-zone"><div class="az-zonehead">Within cap <span class="az-zcnt">' + withinRows.length + '</span></div>' +
+      '<div class="az-body">' + withinRows.map(secRow).join('') + '</div></div>';
+    body.innerHTML = banner + overZone + withinZone;
   }
 
   function zoneHtml(title, key, count, subs) {
@@ -855,13 +1049,15 @@
   }
 
   function backupPayload() {
-    return { app: 'PortfolioGuidance', version: 3, exportedAt: new Date().toISOString(),
-      holdings: state.holdings, overrides: state.overrides, zones: state.zones, ui: load(K.ui, {}), meta: state.meta };
+    return { app: 'PortfolioGuidance', version: 4, exportedAt: new Date().toISOString(),
+      holdings: state.holdings, overrides: state.overrides, zones: state.zones,
+      secthresh: state.secthresh, ui: load(K.ui, {}), meta: state.meta };
   }
   function applyBackup(j) {
     if (j.holdings) { state.holdings = j.holdings; save(K.holdings, state.holdings); }
     if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
     if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
+    if (j.secthresh) { state.secthresh = j.secthresh; save(K.secthresh, state.secthresh); }
     if (j.ui) { save(K.ui, j.ui); }
     if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
     render();
@@ -1062,6 +1258,10 @@
       var b = e.target.closest('.seg-btn'); if (!b) return;
       seg(this, b); state.trimMode = b.getAttribute('data-trim'); calcTrim();
     });
+    el('actionMode').addEventListener('click', function (e) {
+      var b = e.target.closest('.seg-btn'); if (!b) return;
+      setActionMode(b.getAttribute('data-amode'));
+    });
   }
   function seg(container, btn) {
     container.querySelectorAll('.seg-btn').forEach(function (x) { x.classList.remove('active'); });
@@ -1092,6 +1292,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
+    setCap: setCap, setActionMode: setActionMode,
     gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect
   };
 

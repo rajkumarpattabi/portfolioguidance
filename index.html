@@ -77,6 +77,10 @@
     <!-- ACTION -->
     <div class="view" id="v-action">
       <h3 class="section-title">Action</h3>
+      <div class="seg wide" id="actionMode">
+        <button class="seg-btn active" data-amode="stock">Stock</button>
+        <button class="seg-btn" data-amode="sector">Sector</button>
+      </div>
       <div id="actionBody"></div>
     </div>
 
@@ -147,6 +151,26 @@
 
     <!-- SETTINGS -->
     <div class="view" id="v-settings">
+      <div class="set-sec" id="set-zones">
+        <button class="set-head" type="button" onclick="PG.toggleSet('zones')"><span>Sectors &amp; zones</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card">
+            <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
+            <div id="sectorEditor"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-sec collapsed" id="set-caps">
+        <button class="set-head" type="button" onclick="PG.toggleSet('caps')"><span>Sector caps</span><span class="set-caret">▾</span></button>
+        <div class="set-body">
+          <div class="card">
+            <div class="s-sub" style="margin-bottom:12px">Set each sector's <strong>maximum</strong> weightage (on <strong>invested</strong> basis). Totals can't cross 100% — the last empty sector auto-fills with whatever is left. These drive the <strong>Sector</strong> view on the Action tab.</div>
+            <div id="capEditor"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="set-sec collapsed" id="set-zerodha">
         <button class="set-head" type="button" onclick="PG.toggleSet('zerodha')"><span>Zerodha</span><span class="set-caret">▾</span></button>
         <div class="set-body">
@@ -170,16 +194,6 @@
               <div><div class="s-title">Demo data</div><div class="s-sub">Explore with sample holdings.</div></div>
               <button class="ghost-btn" onclick="PG.loadDemo()">Load demo</button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="set-sec" id="set-zones">
-        <button class="set-head" type="button" onclick="PG.toggleSet('zones')"><span>Sectors &amp; zones</span><span class="set-caret">▾</span></button>
-        <div class="set-body">
-          <div class="card">
-            <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
-            <div id="sectorEditor"></div>
           </div>
         </div>
       </div>
