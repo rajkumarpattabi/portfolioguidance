@@ -345,6 +345,11 @@
       var dcls = h.day >= 0 ? 'up' : 'down';
 
       if (state.holdExpanded === h.symbol) {
+        var beRow = '';
+        if (h.ltp > 0 && h.ltp < h.avg) {                 // in the red on cost → show recovery %
+          var be = (h.avg - h.ltp) / h.ltp * 100;
+          beRow = heRow('Growth to breakeven', '+' + be.toFixed(1) + '%', 'be');
+        }
         var pwInv = t.invested ? h.invested / t.invested * 100 : 0;
         var pwVal = t.value ? h.value / t.value * 100 : 0;
         var swInv = secInv[sec] ? h.invested / secInv[sec] * 100 : 0;
@@ -362,6 +367,7 @@
             heRow('Invested', money(h.invested)) +
             heRow('Current value', money(h.value)) +
             heRow('Overall P&amp;L', signMoney(h.pnl) + ' [' + pct(h.pnlPct) + ']', cls) +
+            beRow +
             heRow("Day's P&amp;L", signMoney(h.day) + ' (' + pct(h.dayPct) + ')', dcls) +
             '<div class="he-wtblock">' +
               '<div class="he-wt-r head"><span class="c1">Weightage</span><span>Invested</span><span>Value</span></div>' +
