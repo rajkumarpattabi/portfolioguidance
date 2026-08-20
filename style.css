@@ -167,6 +167,28 @@ input[type=number]:focus,select.fullsel:focus{border-color:var(--accent)}
 .kv-row span:first-child{color:var(--mut)}
 .kv-row span:last-child{font-weight:700}
 
+/* calculator — colour + theme accents (matches Action/Holdings styling) */
+.calc-top .section-title{display:flex;align-items:center;gap:8px}
+.calc-top .section-title::before{content:'∑';color:var(--accent);font-size:17px;font-weight:800;line-height:1}
+/* stock/details card carries the app accent; add/trim panels take buy=green, sell=red */
+#v-calc>.card{border-left:3px solid var(--accent)}
+#panel-add{border-left:3px solid var(--up);background:linear-gradient(180deg,rgba(52,199,137,.07),transparent 120px)}
+#panel-trim{border-left:3px solid var(--down);background:linear-gradient(180deg,rgba(242,109,109,.07),transparent 120px)}
+/* mode toggle reads its intent in colour */
+#calcMode .seg-btn[data-mode="add"].active{color:var(--up)}
+#calcMode .seg-btn[data-mode="trim"].active{color:var(--down)}
+/* trim sub-modes: book-profit hints green */
+#trimMode .seg-btn[data-trim="profit"].active{color:var(--up)}
+/* result headline colour-coded by intent */
+#panel-add .res-big{color:var(--up)}
+#panel-trim .res-big{color:var(--down)}
+/* field labels a touch brighter so the form doesn't read as grey-on-grey */
+#v-calc .fld-label{color:#9fb0c6}
+/* focused inputs glow in the accent, like the rest of the app */
+#v-calc input[type=number]:focus,#v-calc select.fullsel:focus{box-shadow:0 0 0 3px rgba(77,163,255,.18)}
+#panel-add input[type=number]:focus{border-color:var(--up);box-shadow:0 0 0 3px rgba(52,199,137,.18)}
+#panel-trim input[type=number]:focus{border-color:var(--down);box-shadow:0 0 0 3px rgba(242,109,109,.18)}
+
 /* sector editor */
 .sec-edit-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);cursor:pointer}
 .sec-edit-row:last-child{border-bottom:none}
