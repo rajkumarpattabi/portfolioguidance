@@ -61,7 +61,10 @@
 
     <!-- HOLDINGS -->
     <div class="view" id="v-holdings">
-      <h3 class="section-title">Holdings <span class="muted" id="holdCount"></span></h3>
+      <div class="hold-head">
+        <h3 class="section-title" style="margin:0">Holdings <span class="muted" id="holdCount"></span></h3>
+        <button class="mini-btn" type="button" onclick="PG.openCalcNew()">＋ New position</button>
+      </div>
       <div class="seg wide" id="holdSort">
         <button class="seg-btn active" data-sort="value">Value<span class="sarrow"></span></button>
         <button class="seg-btn" data-sort="pnl">P&amp;L<span class="sarrow"></span></button>
@@ -84,9 +87,12 @@
       <div id="actionBody"></div>
     </div>
 
-    <!-- CALCULATOR -->
+    <!-- CALCULATOR (contextual callout, launched from a stock) -->
     <div class="view" id="v-calc">
-      <h3 class="section-title">Position calculator</h3>
+      <div class="calc-top">
+        <button class="calc-back" type="button" onclick="PG.calcBack()">‹ Back</button>
+        <h3 class="section-title" style="margin:0">Position calculator</h3>
+      </div>
       <div class="card">
         <label class="fld-label">Stock</label>
         <div class="selwrap">
@@ -231,7 +237,6 @@
     <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard</button>
     <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
     <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action<span class="navbadge" id="actionBadge" hidden></span></button>
-    <button data-v="calc" onclick="PG.setView('calc')"><span class="ni">∑</span>Calculator</button>
     <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>
   </nav>
 </div>

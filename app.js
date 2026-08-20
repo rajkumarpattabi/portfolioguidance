@@ -40,6 +40,7 @@
     calcMode: 'add',
     trimMode: 'value',
     calcSym: null,
+    prevView: null,        // where to return when the calculator callout closes
     addDriver: null,
     expanded: {}
   };
@@ -368,6 +369,10 @@
               '<div class="he-wt-r"><span class="c1">In portfolio</span><span>' + pwInv.toFixed(1) + '%</span><span>' + pwVal.toFixed(1) + '%</span></div>' +
             '</div>' +
           '</div>' +
+          '<div class="he-actions">' +
+            '<button class="he-actbtn add" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'add\')">＋ Add / Average</button>' +
+            '<button class="he-actbtn trim" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'trim\')">− Trim</button>' +
+          '</div>' +
         '</div>';
       }
 
@@ -693,11 +698,34 @@
   }
   function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
   function toggleSet(key) { var s = el('set-' + key); if (s) s.classList.toggle('collapsed'); }
-  function openCalc(sym) {
-    var sel = el('calcStock'); if (sel) sel.value = sym;
-    setView('calc');
-    calcPickStock(sym);
+  function applyCalcMode(mode) {
+    state.calcMode = mode;
+    var seg = el('calcMode');
+    if (seg) seg.querySelectorAll('.seg-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-mode') === mode); });
+    var pa = el('panel-add'), pt = el('panel-trim');
+    if (pa) pa.hidden = mode !== 'add';
+    if (pt) pt.hidden = mode !== 'trim';
   }
+  // Open the calculator callout for a specific holding, in a given mode.
+  function openCalcMode(sym, mode) {
+    if (state.view !== 'calc') state.prevView = state.view;
+    applyCalcMode(mode || 'add');
+    var sel = el('calcStock'); if (sel) sel.value = sym || '';
+    setView('calc');
+    calcPickStock(sym || '');
+  }
+  function openCalc(sym) { openCalcMode(sym, 'add'); }   // default entry (Action rows, Movers)
+  // Open the calculator for a brand-new / what-if position (no holding).
+  function openCalcNew() {
+    if (state.view !== 'calc') state.prevView = state.view;
+    applyCalcMode('add');
+    var sel = el('calcStock'); if (sel) sel.value = '';
+    setView('calc');
+    calcPickStock('');
+    ['calcQty', 'calcAvg', 'calcLtp', 'buyPrice'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
+    calc();
+  }
+  function calcBack() { setView(state.prevView || 'holdings'); }
 
   function setActionBadge(n) { var b = el('actionBadge'); if (b) { b.textContent = n; b.hidden = !n; } }
 
@@ -1249,9 +1277,7 @@
     });
     el('calcMode').addEventListener('click', function (e) {
       var b = e.target.closest('.seg-btn'); if (!b) return;
-      seg(this, b); state.calcMode = b.getAttribute('data-mode');
-      el('panel-add').hidden = state.calcMode !== 'add';
-      el('panel-trim').hidden = state.calcMode !== 'trim';
+      applyCalcMode(b.getAttribute('data-mode'));
       calc();
     });
     el('trimMode').addEventListener('click', function (e) {
@@ -1275,7 +1301,8 @@
     wirePull();
     el('importFile').addEventListener('change', function () { if (this.files[0]) importJson(this.files[0]); this.value = ''; });
     render();
-    setView(state.view); // restore last-used tab
+    // Calculator is a contextual callout now, not a tab — never boot into it.
+    setView(state.view === 'calc' ? 'holdings' : state.view); // restore last-used tab
     // returning from Kite login (Worker redirected us back)?
     var q = location.search + location.hash;
     if (/[?#&]connected=1/.test(q) || /#connected/.test(q)) {
@@ -1290,6 +1317,7 @@
   window.PG = {
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
+    openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
     setCap: setCap, setActionMode: setActionMode,

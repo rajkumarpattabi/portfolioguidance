@@ -125,6 +125,25 @@ main{flex:1;padding:16px}
 #holdSort .seg-btn{font-size:10.5px;padding:8px 3px}
 .sarrow{font-size:10px;font-weight:700}
 
+/* holdings header + new-position button */
+.hold-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 10px}
+.mini-btn{background:var(--card2);color:var(--accent);border:1px solid var(--line);font-weight:700;font-size:12px;
+  padding:7px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.mini-btn:active{background:var(--card)}
+
+/* calculator callout header */
+.calc-top{display:flex;align-items:center;gap:12px;margin:2px 0 12px}
+.calc-back{background:var(--card2);color:var(--txt);border:1px solid var(--line);font-weight:700;font-size:13px;
+  padding:8px 14px;border-radius:999px;cursor:pointer;flex:none}
+.calc-back:active{background:var(--card)}
+
+/* Add / Trim actions inside expanded stock detail */
+.he-actions{display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.he-actbtn{flex:1;border:1px solid var(--line);border-radius:10px;padding:11px 10px;font-size:13px;font-weight:700;cursor:pointer;text-align:center}
+.he-actbtn.add{background:#123324;color:var(--up);border-color:#2b6b47}
+.he-actbtn.trim{background:#3a1c1c;color:var(--down);border-color:#6b2b2b}
+.he-actbtn:active{opacity:.85}
+
 /* calculator */
 .fld-label{display:block;font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px}
 input[type=number],select.fullsel{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);
@@ -155,7 +174,7 @@ input[type=number]:focus,select.fullsel:focus{border-color:var(--accent)}
 
 /* nav */
 nav{position:fixed;left:0;right:0;bottom:0;z-index:30;max-width:520px;margin:0 auto;
-  display:grid;grid-template-columns:repeat(5,1fr);background:#10131aee;backdrop-filter:blur(12px);
+  display:grid;grid-template-columns:repeat(4,1fr);background:#10131aee;backdrop-filter:blur(12px);
   border-top:1px solid var(--line);padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 nav button{background:none;border:none;color:var(--mut);font-size:10px;font-weight:600;
   display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 2px;cursor:pointer}
