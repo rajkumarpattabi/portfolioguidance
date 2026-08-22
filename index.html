@@ -33,6 +33,7 @@
     <!-- DASHBOARD -->
     <div class="view active" id="v-dash">
       <div class="freshline" id="freshLine" hidden></div>
+      <div id="impactCard" hidden></div>
       <div class="dash-top">
         <div class="donut-wrap">
           <canvas id="donut" width="440" height="440"></canvas>
@@ -155,6 +156,15 @@
       </div>
     </div>
 
+    <!-- IMPACT (contextual callout, opened from the Dashboard card) -->
+    <div class="view" id="v-impact">
+      <div class="calc-top">
+        <button class="calc-back" type="button" onclick="PG.impactBack()">‹ Back</button>
+        <h3 class="section-title" style="margin:0">Impact</h3>
+      </div>
+      <div id="impactBody"></div>
+    </div>
+
     <!-- SETTINGS -->
     <div class="view" id="v-settings">
       <div class="set-sec" id="set-zones">
@@ -234,7 +244,7 @@
   </main>
 
   <nav>
-    <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard</button>
+    <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard<span class="navbadge" id="dashBadge" hidden></span></button>
     <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
     <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action<span class="navbadge" id="actionBadge" hidden></span></button>
     <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>

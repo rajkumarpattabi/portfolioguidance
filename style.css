@@ -307,6 +307,51 @@ input.ct-in.auto{color:var(--mut);border-style:dashed}
 .az-pct{font-size:13px;font-weight:700}
 .az-meta{display:block;font-size:10.5px;color:var(--mut);margin-top:2px}
 
+/* Impact — intent colours: add=green, sell=red, neutral=accent, warn=amber */
+.imp-add{color:var(--up)} .imp-sell{color:var(--down)} .imp-neutral{color:var(--accent)} .imp-warn{color:#ffcf8f}
+/* Dashboard "What changed" card */
+.imp-card{background:linear-gradient(180deg,rgba(77,163,255,.10),transparent 140px);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);padding:13px 14px;margin-bottom:14px}
+.imp-card-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.imp-title{font-size:14px;font-weight:800;color:var(--accent)}
+.imp-since{font-size:11px;color:var(--mut);font-weight:600}
+.imp-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}
+.imp-chip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--card2);border:1px solid var(--line)}
+.imp-chip.imp-add{color:var(--up);border-color:#2b6b47;background:#12331f66}
+.imp-chip.imp-sell{color:var(--down);border-color:#6b2b2b;background:#3a1c1c66}
+.imp-chip.imp-neutral{color:var(--accent);border-color:#2b4a6b;background:#12233a66}
+.imp-chip.imp-warn{color:#ffcf8f;border-color:#6b4e22;background:#3a2c1266}
+.imp-chip.imp-more{color:var(--mut)}
+.imp-card-sub{font-size:12px;color:var(--mut);font-weight:600;line-height:1.5}
+.imp-card-sub .imp-add{font-weight:700}.imp-card-sub .imp-sell{font-weight:700}
+.imp-card-actions{display:flex;gap:8px;margin-top:12px}
+.imp-btn{flex:1;background:var(--card2);color:var(--txt);border:1px solid var(--line);font-weight:700;font-size:13px;padding:9px 12px;border-radius:10px;cursor:pointer}
+.imp-btn.primary{background:var(--accent);color:#04121f;border-color:var(--accent)}
+.imp-btn:active{opacity:.85}
+/* Impact full view */
+.imp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--mut);margin-bottom:12px}
+.imp-head strong{color:var(--txt);font-size:16px}
+.imp-head .imp-btn{flex:none}
+.imp-note{font-size:12.5px;line-height:1.5;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:12px}
+.imp-note.imp-warn{color:#ffcf8f;background:#3a2c1266;border-color:#6b4e22}
+.imp-row{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:9px}
+.imp-row.imp-add{border-left-color:var(--up)} .imp-row.imp-sell{border-left-color:var(--down)}
+.imp-row.imp-neutral{border-left-color:var(--accent)} .imp-row.imp-warn{border-left-color:#ffcf8f}
+.imp-row-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.imp-sym{font-size:14px;font-weight:800}
+.imp-badge{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;padding:2px 7px;border-radius:6px;background:var(--card2);border:1px solid var(--line)}
+.imp-badge.imp-add{color:var(--up);border-color:#2b6b47}.imp-badge.imp-sell{color:var(--down);border-color:#6b2b2b}
+.imp-badge.imp-neutral{color:var(--accent);border-color:#2b4a6b}.imp-badge.imp-warn{color:#ffcf8f;border-color:#6b4e22}
+.imp-sec{font-size:10.5px;font-weight:600;color:var(--mut);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38%}
+.imp-kv{border-top:1px solid var(--line);padding-top:4px}
+.imp-kv-row{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;padding:4px 0}
+.imp-kv-row>span:first-child{color:var(--mut)}
+.imp-kv-row>span:last-child{font-weight:700;text-align:right}
+.imp-kv-row .up{color:var(--up)}.imp-kv-row .down{color:var(--down)}
+.imp-block{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-top:10px}
+.imp-block-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);margin-bottom:6px}
+.imp-block .imp-kv-row .alloc-dot{margin-right:4px}
+.imp-block .imp-kv-row .muted{color:var(--mut);font-weight:600}
+
 /* worker access code input */
 .code-input{flex:1;min-width:120px;background:var(--card2);border:1px solid var(--line);color:var(--txt);
   font-size:15px;padding:10px 12px;border-radius:10px;outline:none}

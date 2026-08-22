@@ -19,7 +19,9 @@
     zones: 'PG_ZONES',
     ui: 'PG_UI',
     gdrive: 'PG_GDRIVE',
-    secthresh: 'PG_SECTHRESH'
+    secthresh: 'PG_SECTHRESH',
+    baseline: 'PG_BASELINE',       // last-reviewed holdings snapshot (qty+avg+ltp)
+    impactMeta: 'PG_IMPACTMETA'    // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
   };
 
   var UI = load(K.ui, {});
@@ -29,6 +31,8 @@
     meta: load(K.meta, { lastSync: 0, source: '' }),
     zones: load(K.zones, {}),
     secthresh: load(K.secthresh, {}),      // {sector: maxPct} — invested basis
+    baseline: load(K.baseline, null),      // {date, source, holdings:[{symbol,qty,avg,ltp}]}
+    impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
     view: UI.view || 'dash',
@@ -161,6 +165,7 @@
     renderAction();
     renderCalcStocks();
     renderSettings();
+    updateImpactBadge();
   }
 
   function renderSummary() {
@@ -193,6 +198,7 @@
     drawDonut(bySector(basis), total);
     renderAlloc(total);
     renderMovers();
+    renderImpactCard();
     updateBasisToggle();
   }
 
@@ -397,6 +403,264 @@
         '</div>' +
       '</div>';
     }).join('');
+  }
+
+  // ---------- Impact (effect of holdings changes since a baseline) ----------
+  function todayStr(d) { d = d || new Date(); var m = d.getMonth() + 1, day = d.getDate(); return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day; }
+  function fmtDate(s) { if (!s) return ''; var p = String(s).split('-'); var mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return parseInt(p[2], 10) + ' ' + (mo[parseInt(p[1], 10) - 1] || ''); }
+  function snapOf(holdings) { return holdings.map(function (h) { return { symbol: h.symbol, qty: h.qty, avg: h.avg, ltp: h.ltp }; }); }
+
+  // Diff two holdings sets on qty/avg only (LTP/price moves are ignored on purpose).
+  function diffHoldings(base, cur) {
+    var bm = {}, cm = {}, events = [];
+    (base || []).forEach(function (h) { bm[h.symbol] = h; });
+    (cur || []).forEach(function (h) { cm[h.symbol] = h; });
+    Object.keys(bm).forEach(function (sym) {
+      var b = bm[sym], c = cm[sym];
+      if (!c) { events.push({ sym: sym, type: 'exited', old: b }); return; }
+      var dq = c.qty - b.qty, da = c.avg - b.avg;
+      if (Math.abs(dq) < 1 && Math.abs(da) < 0.01) return;      // unchanged (price move only)
+      var invB = b.qty * b.avg, invC = c.qty * c.avg, type;
+      if (dq > 0 && da < -0.01 && Math.abs(invC - invB) < 0.01 * Math.max(invB, 1)) type = 'corp'; // split/bonus
+      else if (dq > 0 && da > 0.01) type = 'avgup';
+      else if (dq > 0 && da < -0.01) type = 'avgdown';
+      else if (dq > 0) type = 'added';
+      else if (dq < 0) type = 'trimmed';
+      else type = 'changed';
+      events.push({ sym: sym, type: type, old: b, cur: c });
+    });
+    Object.keys(cm).forEach(function (sym) { if (!bm[sym]) events.push({ sym: sym, type: 'added_new', cur: cm[sym] }); });
+    return events;
+  }
+  function sigOf(events) {
+    return events.slice().sort(function (a, b) { return a.sym < b.sym ? -1 : 1; })
+      .map(function (e) { return e.sym + ':' + e.type + ':' + (e.cur ? e.cur.qty + '/' + r2(e.cur.avg) : '0'); }).join('|');
+  }
+
+  // Recompute the baseline/impact bookkeeping. Called after every holdings apply + on boot.
+  function refreshImpact() {
+    var today = todayStr();
+    if (state.meta.source !== 'zerodha') {           // only track real Zerodha data
+      if (state.impactMeta) { state.impactMeta = null; save(K.impactMeta, null); }
+      return;
+    }
+    var curSnap = snapOf(state.holdings);
+    if (!state.baseline || state.baseline.source !== 'zerodha') {   // seed silently (no false impact)
+      state.baseline = { date: today, source: 'zerodha', holdings: curSnap };
+      save(K.baseline, state.baseline);
+      state.impactMeta = null; save(K.impactMeta, null);
+      return;
+    }
+    var events = diffHoldings(state.baseline.holdings, state.holdings);
+    if (!events.length) { if (state.impactMeta) { state.impactMeta = null; save(K.impactMeta, null); } return; }
+    var sig = sigOf(events);
+    if (state.impactMeta && state.impactMeta.sig === sig) {
+      if (state.impactMeta.shownDate < today) {       // its day has passed → expire + advance baseline
+        state.baseline = { date: today, source: 'zerodha', holdings: curSnap };
+        save(K.baseline, state.baseline);
+        state.impactMeta = null; save(K.impactMeta, null);
+      }
+      return;
+    }
+    state.impactMeta = { shownDate: today, sinceDate: state.baseline.date, sig: sig };  // new/changed → arm for today
+    save(K.impactMeta, state.impactMeta);
+  }
+  function impactActive() {
+    return !!(state.impactMeta && state.impactMeta.shownDate === todayStr() && state.meta.source === 'zerodha' &&
+      state.baseline && diffHoldings(state.baseline.holdings, state.holdings).length);
+  }
+  function acknowledgeImpact() {
+    if (state.meta.source === 'zerodha') {
+      state.baseline = { date: todayStr(), source: 'zerodha', holdings: snapOf(state.holdings) };
+      save(K.baseline, state.baseline);
+    }
+    state.impactMeta = null; save(K.impactMeta, null);
+    toast('Impact acknowledged — baseline updated.');
+    if (state.view === 'impact') { setView(state.prevView || 'dash'); }
+    render();
+  }
+  function openImpact() { if (state.view !== 'impact') state.prevView = state.view; setView('impact'); renderImpactFull(); }
+  function impactBack() { setView(state.prevView && state.prevView !== 'impact' ? state.prevView : 'dash'); }
+
+  var IMP = {
+    added_new: { cls: 'imp-add',     verb: 'Added',           short: 'added' },
+    avgdown:   { cls: 'imp-add',     verb: 'Averaged down',   short: 'avg ↓' },
+    avgup:     { cls: 'imp-neutral', verb: 'Averaged up',     short: 'avg ↑' },
+    added:     { cls: 'imp-add',     verb: 'Added',           short: 'added' },
+    trimmed:   { cls: 'imp-sell',    verb: 'Trimmed',         short: 'trimmed' },
+    exited:    { cls: 'imp-sell',    verb: 'Exited',          short: 'exited' },
+    corp:      { cls: 'imp-warn',    verb: 'Corporate action?', short: 'split?' },
+    changed:   { cls: 'imp-neutral', verb: 'Changed',         short: 'changed' }
+  };
+  function impMeta(t) { return IMP[t] || IMP.changed; }
+
+  function computeImpactMetrics() {
+    var base = (state.baseline && state.baseline.holdings) || [], cur = state.holdings;
+    var events = diffHoldings(base, cur);
+    var baseTot = 0, curTot = 0;
+    base.forEach(function (h) { baseTot += h.qty * h.avg; });
+    cur.forEach(function (h) { curTot += h.qty * h.avg; });
+    function secMap(list) { var m = {}; list.forEach(function (h) { var s = sectorOf(h.symbol); m[s] = (m[s] || 0) + h.qty * h.avg; }); return m; }
+    var secOld = secMap(base), secNew = secMap(cur);
+    var deployed = 0, freed = 0;
+    var rich = events.map(function (e) {
+      var b = e.old, c = e.cur, o = { sym: e.sym, sec: sectorOf(e.sym), type: e.type };
+      o.oldQty = b ? b.qty : 0; o.newQty = c ? c.qty : 0;
+      o.oldAvg = b ? b.avg : 0; o.newAvg = c ? c.avg : 0;
+      o.dQty = o.newQty - o.oldQty; o.dAvg = o.newAvg - o.oldAvg;
+      o.oldInv = o.oldQty * o.oldAvg; o.newInv = o.newQty * o.newAvg;
+      o.oldWt = baseTot ? o.oldInv / baseTot * 100 : 0;
+      o.newWt = curTot ? o.newInv / curTot * 100 : 0;
+      o.ltp = c ? c.ltp : (b ? b.ltp : 0);
+      if (e.type === 'trimmed' || e.type === 'exited') {
+        o.sold = o.oldQty - o.newQty;
+        o.freed = o.sold * o.ltp;                          // proceeds (est)
+        o.realisedEst = o.sold * (o.ltp - o.oldAvg);       // realised P&L (est)
+        freed += o.freed;
+      } else if (o.dQty > 0) {
+        o.deployed = o.dQty * o.newAvg;                    // ~capital added (approx via avg)
+        deployed += o.deployed;
+      }
+      if ((e.type === 'avgdown' || e.type === 'avgup') && c && c.ltp > 0) {
+        o.beOld = (o.oldAvg > c.ltp) ? (o.oldAvg - c.ltp) / c.ltp * 100 : 0;
+        o.beNew = (o.newAvg > c.ltp) ? (o.newAvg - c.ltp) / c.ltp * 100 : 0;
+        o.beShown = o.beOld > 0 || o.beNew > 0;
+      }
+      return o;
+    });
+    var info = capInfo();
+    var affected = {}; rich.forEach(function (o) { affected[o.sec] = 1; });
+    var secImpact = Object.keys(affected).map(function (s) {
+      return { sector: s, oldWt: baseTot ? (secOld[s] || 0) / baseTot * 100 : 0,
+        newWt: curTot ? (secNew[s] || 0) / curTot * 100 : 0, cap: (info.caps[s] != null ? info.caps[s] : null) };
+    }).sort(function (a, b) { return b.newWt - a.newWt; });
+    function topShare(list, total, n) {
+      var arr = list.map(function (h) { return h.qty * h.avg; }).sort(function (a, b) { return b - a; }), s = 0;
+      for (var i = 0; i < n && i < arr.length; i++) s += arr[i];
+      return total ? s / total * 100 : 0;
+    }
+    var conc = { top1Old: topShare(base, baseTot, 1), top1New: topShare(cur, curTot, 1),
+      top5Old: topShare(base, baseTot, 5), top5New: topShare(cur, curTot, 5),
+      countOld: base.length, countNew: cur.length };
+    var unclassified = rich.filter(function (o) { return o.type === 'added_new' && o.sec === 'Unclassified'; }).map(function (o) { return o.sym; });
+    return { rich: rich, deployed: deployed, freed: freed, secImpact: secImpact, conc: conc,
+      unclassified: unclassified, count: rich.length,
+      sinceDate: (state.impactMeta && state.impactMeta.sinceDate) || (state.baseline && state.baseline.date) };
+  }
+
+  function updateImpactBadge() {
+    var b = el('dashBadge'); if (!b) return;
+    var on = impactActive();
+    if (on) { b.textContent = computeImpactMetrics().count; b.hidden = false; } else { b.hidden = true; }
+  }
+
+  // Compact "What changed" card on the Dashboard
+  function renderImpactCard() {
+    var c = el('impactCard'); if (!c) return;
+    if (!impactActive()) { c.hidden = true; c.innerHTML = ''; return; }
+    var m = computeImpactMetrics();
+    var chips = m.rich.slice(0, 4).map(function (o) {
+      return '<span class="imp-chip ' + impMeta(o.type).cls + '">' + esc(o.sym) + ' · ' + impMeta(o.type).short + '</span>';
+    }).join('');
+    if (m.rich.length > 4) chips += '<span class="imp-chip imp-more">+' + (m.rich.length - 4) + '</span>';
+    var sub = [];
+    if (m.deployed > 0) sub.push('<span class="imp-add">' + money0(m.deployed) + ' deployed</span>');
+    if (m.freed > 0) sub.push('<span class="imp-sell">' + money0(m.freed) + ' freed (est)</span>');
+    var over = m.secImpact.filter(function (s) { return s.cap != null && s.newWt > s.cap + 0.05; });
+    if (over.length) sub.push('<span class="imp-sell">' + esc(over[0].sector) + ' ' + n1(over[0].newWt) + '% > ' + n1(over[0].cap) + '% cap</span>');
+    c.hidden = false;
+    c.innerHTML =
+      '<div class="imp-card">' +
+        '<div class="imp-card-h"><span class="imp-title">◔ What changed</span>' +
+          '<span class="imp-since">since ' + esc(fmtDate(m.sinceDate)) + '</span></div>' +
+        '<div class="imp-chips">' + chips + '</div>' +
+        (sub.length ? '<div class="imp-card-sub">' + sub.join(' · ') + '</div>' : '') +
+        '<div class="imp-card-actions">' +
+          '<button class="imp-btn primary" type="button" onclick="PG.openImpact()">View impact</button>' +
+          '<button class="imp-btn" type="button" onclick="PG.acknowledgeImpact()">Acknowledge</button>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // Full Impact callout view
+  function renderImpactFull() {
+    var body = el('impactBody'); if (!body) return;
+    if (!impactActive()) {
+      body.innerHTML = '<div class="empty-note">No portfolio changes to show. Impacts appear here after you buy, average, trim or exit a holding.</div>';
+      return;
+    }
+    var m = computeImpactMetrics();
+    function pctMove(oldV, newV) { var d = newV - oldV; return '<span class="' + (d >= 0 ? 'up' : 'down') + '">' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + '%</span>'; }
+    function kv(l, v) { return '<div class="imp-kv-row"><span>' + l + '</span><span>' + v + '</span></div>'; }
+
+    var rows = m.rich.map(function (o) {
+      var meta = impMeta(o.type), lines = [];
+      if (o.type === 'added_new') {
+        lines.push(kv('Bought', inr0.format(o.newQty) + ' @ ' + money2(o.newAvg)));
+        if (o.deployed) lines.push(kv('Deployed', '<span class="imp-add">' + money0(o.deployed) + '</span>'));
+        lines.push(kv('Portfolio weight', n1(o.newWt) + '%'));
+      } else if (o.type === 'exited') {
+        lines.push(kv('Sold', inr0.format(o.oldQty) + ' @ ~' + money2(o.ltp) + ' (est)'));
+        lines.push(kv('Freed', '<span class="imp-sell">' + money0(o.freed) + ' (est)</span>'));
+        lines.push(kv('Realised', '<span class="' + (o.realisedEst >= 0 ? 'up' : 'down') + '">' + signMoney0(o.realisedEst) + ' (est)</span>'));
+      } else {
+        lines.push(kv('Qty', inr0.format(o.oldQty) + ' → ' + inr0.format(o.newQty) + ' (' + (o.dQty >= 0 ? '+' : '−') + inr0.format(Math.abs(o.dQty)) + ')'));
+        if (Math.abs(o.dAvg) >= 0.01)
+          lines.push(kv('Avg cost', money2(o.oldAvg) + ' → ' + money2(o.newAvg) + ' ' + pctMove(0, (o.oldAvg ? o.dAvg / o.oldAvg * 100 : 0))));
+        if (o.type === 'trimmed') {
+          lines.push(kv('Freed', '<span class="imp-sell">' + money0(o.freed) + ' (est)</span>'));
+          lines.push(kv('Realised', '<span class="' + (o.realisedEst >= 0 ? 'up' : 'down') + '">' + signMoney0(o.realisedEst) + ' (est)</span>'));
+        } else if (o.deployed) {
+          lines.push(kv('Deployed', '<span class="imp-add">' + money0(o.deployed) + '</span>'));
+        }
+        if (o.beShown) lines.push(kv('Breakeven', '<span class="imp-warn">' + o.beOld.toFixed(1) + '% → ' + o.beNew.toFixed(1) + '%</span>'));
+        lines.push(kv('Portfolio weight', n1(o.oldWt) + '% → ' + n1(o.newWt) + '%'));
+      }
+      return '<div class="imp-row ' + meta.cls + '">' +
+        '<div class="imp-row-h">' +
+          '<span class="alloc-dot" style="background:' + sectorColor(o.sec) + '"></span>' +
+          '<span class="imp-sym">' + esc(o.sym) + '</span>' +
+          '<span class="imp-badge ' + meta.cls + '">' + meta.verb + '</span>' +
+          '<span class="imp-sec">' + esc(o.sec) + '</span>' +
+        '</div>' +
+        '<div class="imp-kv">' + lines.join('') + '</div>' +
+      '</div>';
+    }).join('');
+
+    // capital summary
+    var cap = [];
+    if (m.deployed > 0) cap.push('<div class="imp-kv-row"><span>Capital deployed</span><span class="imp-add">' + money0(m.deployed) + '</span></div>');
+    if (m.freed > 0) cap.push('<div class="imp-kv-row"><span>Capital freed (est)</span><span class="imp-sell">' + money0(m.freed) + '</span></div>');
+    var capBlock = cap.length ? '<div class="imp-block"><div class="imp-block-h">Capital</div>' + cap.join('') + '</div>' : '';
+
+    // sector cap impact
+    var secRows = m.secImpact.map(function (s) {
+      var right;
+      if (s.cap != null) {
+        var over = s.newWt > s.cap + 0.05;
+        right = '<span class="' + (over ? 'down' : 'up') + '">' + n1(s.oldWt) + '% → ' + n1(s.newWt) + '% (cap ' + n1(s.cap) + '%)</span>';
+      } else {
+        right = '<span class="muted">' + n1(s.oldWt) + '% → ' + n1(s.newWt) + '% · no cap</span>';
+      }
+      return '<div class="imp-kv-row"><span><span class="alloc-dot" style="background:' + sectorColor(s.sector) + '"></span> ' + esc(s.sector) + '</span>' + right + '</div>';
+    }).join('');
+    var secBlock = secRows ? '<div class="imp-block"><div class="imp-block-h">Sector weight &amp; caps</div>' + secRows + '</div>' : '';
+
+    // concentration
+    var concBlock = '<div class="imp-block"><div class="imp-block-h">Concentration</div>' +
+      '<div class="imp-kv-row"><span>Holdings</span><span>' + m.conc.countOld + ' → ' + m.conc.countNew + '</span></div>' +
+      '<div class="imp-kv-row"><span>Top holding</span><span>' + n1(m.conc.top1Old) + '% → ' + n1(m.conc.top1New) + '%</span></div>' +
+      '<div class="imp-kv-row"><span>Top 5</span><span>' + n1(m.conc.top5Old) + '% → ' + n1(m.conc.top5New) + '%</span></div>' +
+    '</div>';
+
+    var uncl = m.unclassified.length
+      ? '<div class="imp-note imp-warn">New ' + (m.unclassified.length > 1 ? 'stocks' : 'stock') + ' ' + m.unclassified.map(esc).join(', ') + ' ' + (m.unclassified.length > 1 ? 'are' : 'is') + ' Unclassified — assign a sector in Settings.</div>'
+      : '';
+
+    body.innerHTML =
+      '<div class="imp-head"><div><strong>' + m.count + '</strong> change' + (m.count > 1 ? 's' : '') + ' since ' + esc(fmtDate(m.sinceDate)) + '</div>' +
+        '<button class="imp-btn primary" type="button" onclick="PG.acknowledgeImpact()">Acknowledge</button></div>' +
+      uncl + rows + capBlock + secBlock + concBlock;
   }
 
   function toggleHold(sym) {
@@ -1060,6 +1324,7 @@
     }).filter(function (h) { return h.symbol && h.qty > 0; });
     state.meta = { lastSync: Date.now(), source: source };
     save(K.holdings, state.holdings); save(K.meta, state.meta);
+    refreshImpact();
     render();
     scheduleAutoBackup();
   }
@@ -1083,17 +1348,22 @@
   }
 
   function backupPayload() {
-    return { app: 'PortfolioGuidance', version: 4, exportedAt: new Date().toISOString(),
+    return { app: 'PortfolioGuidance', version: 5, exportedAt: new Date().toISOString(),
       holdings: state.holdings, overrides: state.overrides, zones: state.zones,
-      secthresh: state.secthresh, ui: load(K.ui, {}), meta: state.meta };
+      secthresh: state.secthresh, baseline: state.baseline, impactMeta: state.impactMeta,
+      ui: load(K.ui, {}), meta: state.meta };
   }
   function applyBackup(j) {
     if (j.holdings) { state.holdings = j.holdings; save(K.holdings, state.holdings); }
     if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
     if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
     if (j.secthresh) { state.secthresh = j.secthresh; save(K.secthresh, state.secthresh); }
-    if (j.ui) { save(K.ui, j.ui); }
     if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
+    // Carry the impact baseline across devices if present; else seed fresh from restored holdings.
+    state.baseline = j.baseline || null; save(K.baseline, state.baseline);
+    state.impactMeta = j.impactMeta || null; save(K.impactMeta, state.impactMeta);
+    if (j.ui) { save(K.ui, j.ui); }
+    refreshImpact();
     render();
   }
 
@@ -1306,9 +1576,10 @@
     wireSheetSwipe();
     wirePull();
     el('importFile').addEventListener('change', function () { if (this.files[0]) importJson(this.files[0]); this.value = ''; });
+    refreshImpact();   // re-evaluate any pending impact from a prior session
     render();
-    // Calculator is a contextual callout now, not a tab — never boot into it.
-    setView(state.view === 'calc' ? 'holdings' : state.view); // restore last-used tab
+    // Calculator/Impact are contextual callouts, not tabs — never boot into them.
+    setView((state.view === 'calc' || state.view === 'impact') ? 'dash' : state.view);
     // returning from Kite login (Worker redirected us back)?
     var q = location.search + location.hash;
     if (/[?#&]connected=1/.test(q) || /#connected/.test(q)) {
@@ -1324,6 +1595,7 @@
     setView: setView, sync: sync, loadDemo: loadDemo,
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
+    openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
     setCap: setCap, setActionMode: setActionMode,
