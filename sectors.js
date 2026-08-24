@@ -8,7 +8,7 @@ window.PG_SECTORS = {
   LIST: [
     "Finance", "Insurance", "Info Tech", "IT Hardware", "Pharma",
     "FMCG", "Automobiles", "Specialty Chemicals", "Paints", "Metals & Mining",
-    "Capital Goods", "Power (Renewable)", "Gold", "Unclassified"
+    "Capital Goods", "Power (Renewable)", "Defense", "Gold", "Unclassified"
   ],
 
   MAP: {

@@ -257,6 +257,10 @@
     <div class="sheet-grip"></div>
     <div class="sheet-title" id="sectorSheetTitle">Set sector</div>
     <div id="sectorOptions" class="sector-options"></div>
+    <div class="sheet-add">
+      <input id="newSectorName" class="code-input" type="text" maxlength="24" autocomplete="off" placeholder="New sector name">
+      <button class="ghost-btn" onclick="PG.addSector(document.getElementById('newSectorName').value)">Add</button>
+    </div>
     <div class="sheet-actions">
       <button class="sheet-btn" onclick="PG.closeSectorSheet()">Cancel</button>
     </div>

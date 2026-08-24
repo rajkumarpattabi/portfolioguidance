@@ -21,7 +21,8 @@
     gdrive: 'PG_GDRIVE',
     secthresh: 'PG_SECTHRESH',
     baseline: 'PG_BASELINE',       // last-reviewed holdings snapshot (qty+avg+ltp)
-    impactMeta: 'PG_IMPACTMETA'    // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
+    impactMeta: 'PG_IMPACTMETA',   // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
+    customsectors: 'PG_CUSTOMSECTORS'  // user-added sector names
   };
 
   var UI = load(K.ui, {});
@@ -31,6 +32,7 @@
     meta: load(K.meta, { lastSync: 0, source: '' }),
     zones: load(K.zones, {}),
     secthresh: load(K.secthresh, {}),      // {sector: maxPct} — invested basis
+    customSectors: load(K.customsectors, []),  // user-added sector names
     baseline: load(K.baseline, null),      // {date, source, holdings:[{symbol,qty,avg,ltp}]}
     impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
@@ -76,6 +78,14 @@
   function sectorOf(sym) {
     return state.overrides[sym] || SEC.MAP[sym] || SEC.MAP[baseSymbol(sym)] || 'Unclassified';
   }
+  // Effective sector list = bundled sectors + user-added customs, with Unclassified always last.
+  function sectorList() {
+    var out = [], seen = {};
+    (SEC.LIST || []).forEach(function (s) { if (s !== 'Unclassified' && !seen[s]) { seen[s] = 1; out.push(s); } });
+    (state.customSectors || []).forEach(function (s) { if (s && s !== 'Unclassified' && !seen[s]) { seen[s] = 1; out.push(s); } });
+    out.push('Unclassified');
+    return out;
+  }
 
   // stable colour per sector (index into palette by position in LIST)
   var PALETTE = ['#34c789', '#4da3ff', '#f5c542', '#a78bfa', '#f472b6', '#22d3ee',
@@ -83,8 +93,8 @@
     '#f87171', '#c084fc', '#4ade80', '#38bdf8', '#fbbf24', '#818cf8',
     '#fca5a5', '#5eead4', '#fdba74', '#93c5fd', '#d8b4fe', '#6ee7b7', '#fde68a'];
   function sectorColor(name) {
-    var i = SEC.LIST.indexOf(name);
-    if (i < 0) i = SEC.LIST.length - 1;
+    var list = sectorList(), i = list.indexOf(name);
+    if (i < 0) i = list.length - 1;
     if (name === 'Unclassified') return '#6b7280';
     return PALETTE[i % PALETTE.length];
   }
@@ -867,7 +877,7 @@
 
     el('aboutBox').innerHTML =
       'PortfolioGuidance · a private PWA. Holdings stay in this device and your backups only.<br>' +
-      'Sector map: ' + Object.keys(SEC.MAP).length + ' bundled symbols across ' + (SEC.LIST.length - 1) + ' sectors.<br>' +
+      'Sector map: ' + Object.keys(SEC.MAP).length + ' bundled symbols across ' + (sectorList().length - 1) + ' sectors' + (state.customSectors && state.customSectors.length ? ' (' + state.customSectors.length + ' custom)' : '') + '.<br>' +
       (WORKER ? ('Worker: ' + esc(WORKER)) : 'Worker: not configured (demo mode).');
 
     renderCaps();
@@ -1142,16 +1152,49 @@
 
   // ---------- sector sheet ----------
   var sheetSym = null;
+  function sectorInUse(name) {
+    return state.holdings.some(function (h) { return sectorOf(h.symbol) === name; });
+  }
+  function isCustomSector(name) { return (state.customSectors || []).indexOf(name) >= 0 && (SEC.LIST || []).indexOf(name) < 0; }
+  function renderSectorOptions() {
+    if (!sheetSym) return;
+    var cur = sectorOf(sheetSym);
+    el('sectorOptions').innerHTML = sectorList().map(function (s) {
+      var del = (isCustomSector(s) && !sectorInUse(s))
+        ? '<span class="sec-del" onclick="event.stopPropagation();PG.removeCustomSector(\'' + esc(s) + '\')">×</span>' : '';
+      return '<button class="sec-opt' + (s === cur ? ' sel' : '') + '" onclick="PG.setSector(\'' + esc(s) + '\')">' +
+        '<span class="alloc-dot" style="background:' + sectorColor(s) + '"></span><span class="sec-opt-name">' + esc(s) + '</span>' + del + '</button>';
+    }).join('');
+  }
   function openSectorSheet(sym) {
     sheetSym = sym;
     el('sectorSheetTitle').textContent = sym + ' — set sector';
-    var cur = sectorOf(sym);
-    el('sectorOptions').innerHTML = SEC.LIST.map(function (s) {
-      return '<button class="sec-opt' + (s === cur ? ' sel' : '') + '" onclick="PG.setSector(\'' + esc(s) + '\')">' +
-        '<span class="alloc-dot" style="background:' + sectorColor(s) + '"></span>' + esc(s) + '</button>';
-    }).join('');
+    renderSectorOptions();
+    var ni = el('newSectorName'); if (ni) ni.value = '';
     var p = el('sectorSheetPanel'); if (p) { p.style.transition = ''; p.style.transform = ''; p.scrollTop = 0; }
     el('sectorSheet').hidden = false;
+  }
+  function addSector(raw) {
+    var name = String(raw || '').trim().replace(/[\"'\\<>]/g, '').replace(/\s+/g, ' ').slice(0, 24);
+    if (!name) { toast('Enter a sector name.'); return; }
+    var exists = sectorList().some(function (s) { return s.toLowerCase() === name.toLowerCase(); });
+    if (exists) { toast('“' + name + '” already exists.'); return; }
+    state.customSectors.push(name);
+    save(K.customsectors, state.customSectors);
+    scheduleAutoBackup();
+    setSector(name);         // assign it to the current stock + close + re-render
+    toast('Added sector “' + name + '”.');
+  }
+  function removeCustomSector(name) {
+    if (!isCustomSector(name)) return;
+    if (sectorInUse(name)) { toast('“' + name + '” is in use — reassign those stocks first.'); return; }
+    state.customSectors = state.customSectors.filter(function (s) { return s !== name; });
+    save(K.customsectors, state.customSectors);
+    if (state.secthresh[name] != null) { delete state.secthresh[name]; save(K.secthresh, state.secthresh); }
+    scheduleAutoBackup();
+    renderSectorOptions();
+    render();
+    toast('Removed “' + name + '”.');
   }
   function sheetBackdrop(e) { if (e.target === el('sectorSheet')) closeSectorSheet(); }
   function wireSheetSwipe() {
@@ -1348,9 +1391,10 @@
   }
 
   function backupPayload() {
-    return { app: 'PortfolioGuidance', version: 5, exportedAt: new Date().toISOString(),
+    return { app: 'PortfolioGuidance', version: 6, exportedAt: new Date().toISOString(),
       holdings: state.holdings, overrides: state.overrides, zones: state.zones,
-      secthresh: state.secthresh, baseline: state.baseline, impactMeta: state.impactMeta,
+      secthresh: state.secthresh, customSectors: state.customSectors,
+      baseline: state.baseline, impactMeta: state.impactMeta,
       ui: load(K.ui, {}), meta: state.meta };
   }
   function applyBackup(j) {
@@ -1358,6 +1402,7 @@
     if (j.overrides) { state.overrides = j.overrides; save(K.overrides, state.overrides); }
     if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
     if (j.secthresh) { state.secthresh = j.secthresh; save(K.secthresh, state.secthresh); }
+    if (j.customSectors) { state.customSectors = j.customSectors; save(K.customsectors, state.customSectors); }
     if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
     // Carry the impact baseline across devices if present; else seed fresh from restored holdings.
     state.baseline = j.baseline || null; save(K.baseline, state.baseline);
@@ -1597,6 +1642,7 @@
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
+    addSector: addSector, removeCustomSector: removeCustomSector,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
     setCap: setCap, setActionMode: setActionMode,
     gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect

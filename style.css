@@ -214,6 +214,12 @@ nav button.active{color:var(--accent)}
 .sec-opt{display:flex;align-items:center;gap:10px;background:none;border:none;border-bottom:1px solid var(--line);
   color:var(--txt);font-size:14px;padding:12px 4px;text-align:left;cursor:pointer;width:100%}
 .sec-opt.sel{color:var(--accent);font-weight:700}
+.sec-opt-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sec-del{color:var(--mut);font-size:20px;line-height:1;font-weight:700;padding:0 4px 0 8px;flex:none}
+.sec-del:active{color:var(--down)}
+.sheet-add{display:flex;gap:8px;margin-top:12px}
+.sheet-add .code-input{flex:1;min-width:0}
+.sheet-add .ghost-btn{flex:none}
 .sheet-actions{margin-top:14px;display:flex;justify-content:flex-end;gap:8px}
 .sheet-btn{background:var(--card2);border:1px solid var(--line);color:var(--txt);font-weight:600;font-size:13.5px;padding:10px 18px;border-radius:10px;cursor:pointer}
 
