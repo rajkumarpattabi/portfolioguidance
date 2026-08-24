@@ -275,18 +275,18 @@ input.zt-in:focus{border-color:var(--accent);outline:none}
 .cap-sum{font-size:12px;color:var(--mut);margin-bottom:12px;line-height:1.5}
 .cap-sum strong{color:var(--txt);font-weight:700}
 .cap-sum .down{color:var(--down);font-weight:700}
-.ct-head,.ct-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center}
-.ct-head{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:2px}
-.ct-head span:last-child{text-align:right}
+.ct-head,.ct-row{display:grid;grid-template-columns:minmax(0,1fr) 44px 56px 50px;gap:6px;align-items:center}
+.ct-head{font-size:9.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.2px;padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.ct-head span:not(:first-child){text-align:center}
 .ct-row{padding:8px 0;border-bottom:1px solid var(--line)}
 .ct-row:last-child{border-bottom:none}
-.ct-sec{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ct-inwrap{display:flex;align-items:center;justify-content:flex-end;gap:6px}
-input.ct-in{width:62px;background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:13px;padding:7px 6px;border-radius:8px;text-align:center;-webkit-appearance:none;appearance:none}
+.ct-sec{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-cur{font-size:12px;font-weight:600;color:var(--mut);text-align:center}
+input.ct-in{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);font-size:13px;padding:7px 4px;border-radius:8px;text-align:center;-webkit-appearance:none;appearance:none}
 input.ct-in:focus{border-color:var(--accent);outline:none}
 input.ct-in.auto{color:var(--mut);border-style:dashed}
-.ct-pct{font-size:12px;color:var(--mut);font-weight:600}
-.ct-tag{font-size:9px;font-weight:700;color:var(--accent);background:#4da3ff1a;border-radius:5px;padding:2px 5px;text-transform:uppercase;letter-spacing:.3px}
+.ct-delta{font-size:11.5px;font-weight:700;text-align:center}
+.ct-delta.up{color:var(--up)}.ct-delta.down{color:var(--down)}.ct-delta.muted{color:var(--mut2)}
 .az-row.nolink{cursor:default}
 .az-row.nolink:active{background:none}
 

@@ -888,23 +888,25 @@
     var wrap = el('capEditor'); if (!wrap) return;
     if (!state.holdings.length) { wrap.innerHTML = '<div class="s-sub">Load holdings to set sector caps.</div>'; return; }
     var info = capInfo();
+    var totalInv = 0; state.holdings.forEach(function (h) { totalInv += h.qty * h.avg; });
     var rows = info.list.map(function (x) {
       var sec = x.sector, explicit = info.explicit[sec], isAuto = sec === info.autoSector;
       var val = (explicit != null) ? explicit : (isAuto ? info.remaining : '');
+      var wt = totalInv ? x.inv / totalInv * 100 : 0, cap = info.caps[sec];
       var cls = 'ct-in' + (explicit == null && isAuto ? ' auto' : '');
-      var tag = (explicit == null && isAuto) ? '<span class="ct-tag">auto</span>' : '';
-      return '<div class="ct-row">' +
+      return '<div class="ct-row" data-sector="' + esc(sec) + '">' +
         '<span class="ct-sec" style="color:' + sectorColor(sec) + '">' + esc(sec) + '</span>' +
-        '<div class="ct-inwrap">' +
-          '<input class="' + cls + '" data-sector="' + esc(sec) + '" type="number" inputmode="decimal" min="0" max="100" placeholder="—" value="' + val + '" oninput="PG.setCap(this.getAttribute(\'data-sector\'), this.value)">' +
-          '<span class="ct-pct">%</span>' + tag +
-        '</div>' +
+        '<span class="ct-cur">' + n1(wt) + '%</span>' +
+        '<input class="' + cls + '" data-sector="' + esc(sec) + '" type="number" inputmode="decimal" min="0" max="100" placeholder="—" value="' + val + '" oninput="PG.setCap(this.getAttribute(\'data-sector\'), this.value)">' +
+        '<span class="ct-delta ' + capDeltaCls(cap, wt) + '">' + capDeltaTxt(cap, wt) + '</span>' +
       '</div>';
     }).join('');
     wrap.innerHTML = '<div class="cap-sum" id="capSum"></div>' +
-      '<div class="ct-head"><span>Sector</span><span>Max weightage</span></div>' + rows;
+      '<div class="ct-head"><span>Sector</span><span>Now</span><span>Max %</span><span>Δ</span></div>' + rows;
     refreshCapSum(info);
   }
+  function capDeltaTxt(cap, wt) { if (cap == null) return '—'; var d = cap - wt; return (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + '%'; }
+  function capDeltaCls(cap, wt) { if (cap == null) return 'muted'; return (cap - wt) < -0.05 ? 'down' : 'up'; }
   function refreshCapSum(info) {
     info = info || capInfo();
     var e = el('capSum'); if (!e) return;
@@ -915,22 +917,22 @@
         : ('unassigned <strong>' + n1(info.remaining) + '%</strong>')) +
       (over ? ' <span class="down">· over 100%</span>' : '');
   }
-  // Update auto-fill markers + summary in place, without rebuilding inputs (keeps focus while typing).
+  // Update auto-fill markers + delta cells + summary in place, without rebuilding inputs (keeps focus while typing).
   function updateCapAuto() {
     var info = capInfo();
-    var inputs = document.querySelectorAll('#capEditor .ct-in');
-    Array.prototype.forEach.call(inputs, function (inp) {
-      var sec = inp.getAttribute('data-sector'), explicit = info.explicit[sec], isAuto = sec === info.autoSector;
-      var wrap = inp.parentNode, tag = wrap.querySelector('.ct-tag');
-      if (explicit == null && isAuto) {
-        inp.classList.add('auto');
-        if (inp !== document.activeElement) inp.value = info.remaining;
-        if (!tag) { tag = document.createElement('span'); tag.className = 'ct-tag'; tag.textContent = 'auto'; wrap.appendChild(tag); }
-      } else {
-        inp.classList.remove('auto');
-        if (explicit == null && inp !== document.activeElement) inp.value = '';
-        if (tag) tag.parentNode.removeChild(tag);
+    var totalInv = 0; state.holdings.forEach(function (h) { totalInv += h.qty * h.avg; });
+    var invBySec = {}; info.list.forEach(function (x) { invBySec[x.sector] = x.inv; });
+    var rows = document.querySelectorAll('#capEditor .ct-row');
+    Array.prototype.forEach.call(rows, function (row) {
+      var sec = row.getAttribute('data-sector'), explicit = info.explicit[sec], isAuto = sec === info.autoSector;
+      var inp = row.querySelector('.ct-in');
+      if (inp) {
+        if (explicit == null && isAuto) { inp.classList.add('auto'); if (inp !== document.activeElement) inp.value = info.remaining; }
+        else { inp.classList.remove('auto'); if (explicit == null && inp !== document.activeElement) inp.value = ''; }
       }
+      var wt = totalInv ? (invBySec[sec] || 0) / totalInv * 100 : 0, cap = info.caps[sec];
+      var d = row.querySelector('.ct-delta');
+      if (d) { d.textContent = capDeltaTxt(cap, wt); d.className = 'ct-delta ' + capDeltaCls(cap, wt); }
     });
     refreshCapSum(info);
   }
@@ -977,7 +979,12 @@
     scheduleAutoBackup();
   }
   function toggleSub(sk) { state.subOpen[sk] = (state.subOpen[sk] === false) ? true : false; renderAction(); }
-  function toggleSet(key) { var s = el('set-' + key); if (s) s.classList.toggle('collapsed'); }
+  function toggleSet(key) {
+    var s = el('set-' + key); if (!s) return;
+    var willOpen = s.classList.contains('collapsed');
+    document.querySelectorAll('#v-settings .set-sec').forEach(function (sec) { sec.classList.add('collapsed'); });
+    if (willOpen) s.classList.remove('collapsed');   // accordion: only one open at a time
+  }
   function applyCalcMode(mode) {
     state.calcMode = mode;
     var seg = el('calcMode');
