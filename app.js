@@ -1019,11 +1019,18 @@
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
     updateActionToggle();
-    if (!state.holdings.length) { setActionBadge(0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
+    if (!state.holdings.length) { setActionBadge(0); setActionToggleCounts(0, 0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
     var sz = computeStockZones(), sc = computeSectorCaps();
     setActionBadge(sz.anyBuy + sz.anySell + sc.overCount);
+    setActionToggleCounts(sz.anyBuy + sz.anySell, sc.overCount);
     if (state.actionMode === 'sector') renderActionSector(body, sc);
     else renderActionStock(body, sz);
+  }
+
+  function setActionToggleCounts(stock, sector) {
+    var s = el('amodeStockCnt'), c = el('amodeSectorCnt');
+    if (s) { s.textContent = stock; s.hidden = !stock; }
+    if (c) { c.textContent = sector; c.hidden = !sector; }
   }
 
   function updateActionToggle() {
@@ -1584,6 +1591,7 @@
     document.querySelectorAll('.view').forEach(function (n) { n.classList.toggle('active', n.id === 'v-' + v); });
     document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-v') === v); });
     if (v === 'dash') { var t = totals(); drawDonut(bySector(state.allocBasis), state.allocBasis === 'value' ? t.value : t.invested); }
+    if (v === 'action') renderAction();   // always refresh Action (zones/caps may have changed in Settings)
     window.scrollTo(0, 0);
     saveUI();
   }
