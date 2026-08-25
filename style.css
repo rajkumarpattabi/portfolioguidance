@@ -133,6 +133,21 @@ main{flex:1;padding:16px}
 .mini-btn{background:var(--card2);color:var(--accent);border:1px solid var(--line);font-weight:700;font-size:12px;
   padding:7px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
 .mini-btn:active{background:var(--card)}
+#holdViewSeg{margin:0}
+#holdViewSeg .seg-btn{font-size:12.5px;padding:7px 14px}
+
+/* watchlist */
+.watch-add{display:flex;gap:8px;margin-bottom:10px}
+.watch-add .code-input{flex:1;min-width:0;text-transform:uppercase}
+.watch-add .ghost-btn{flex:none}
+.wl-tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--accent);
+  background:#4da3ff1a;border:1px solid #2b4a6b;border-radius:5px;padding:1px 5px;margin-left:6px}
+.wl-tgt{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:2px}
+.wl-tgt.up{color:var(--up)}
+.wl-del{background:none;border:none;color:var(--mut2);font-size:11px;font-weight:600;cursor:pointer;padding:2px 0 0;margin-top:2px}
+.wl-del:active{color:var(--down)}
+.zt-watch{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.2px;color:var(--accent);margin-left:5px;vertical-align:middle}
+input.zt-in:disabled{opacity:.4}
 
 /* calculator callout header */
 .calc-top{display:flex;align-items:center;gap:12px;margin:2px 0 12px}

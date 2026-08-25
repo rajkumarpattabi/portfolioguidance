@@ -5,6 +5,7 @@
  *   GET /login?k=APP_KEY&redirect=<app url>  -> redirects to Kite login
  *   GET /callback?request_token=...          -> Kite calls this; exchanges token, stores session, redirects back
  *   GET /holdings?k=APP_KEY                   -> returns your live holdings (or {needLogin:true})
+ *   GET /quote?k=APP_KEY&i=INFY,TCS           -> live LTP + close for watchlist symbols (NSE)
  *
  * Bindings expected (see wrangler.toml):
  *   KV namespace: SESSION
@@ -26,6 +27,7 @@ export default {
       if (path === '/login') return handleLogin(url, env);
       if (path === '/callback') return handleCallback(url, env);
       if (path === '/holdings') return cors(await handleHoldings(url, env), origin);
+      if (path === '/quote') return cors(await handleQuote(url, env), origin);
       if (path === '/') return cors(json({ ok: true, service: 'portfolioguidance-worker' }), origin);
       return cors(json({ error: 'not_found' }, 404), origin);
     } catch (e) {
@@ -113,6 +115,38 @@ async function handleHoldings(url, env) {
   })).filter(h => h.symbol && h.qty > 0);
 
   return json({ holdings, user: sess.user, syncedAt: Date.now() });
+}
+
+// Live LTP + close for watchlist (non-holding) symbols via Kite quote/ohlc. Assumes NSE.
+async function handleQuote(url, env) {
+  if (!checkKey(url, env)) return json({ error: 'unauthorized' }, 401);
+  const raw = await env.SESSION.get('session');
+  if (!raw) return json({ needLogin: true }, 401);
+  let sess; try { sess = JSON.parse(raw); } catch (e) { return json({ needLogin: true }, 401); }
+
+  const symsParam = url.searchParams.get('i') || url.searchParams.get('symbols') || '';
+  const syms = symsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 200);
+  if (!syms.length) return json({ quotes: {} });
+
+  const qs = syms.map(s => 'i=' + encodeURIComponent('NSE:' + s)).join('&');
+  const r = await fetch(KITE + '/quote/ohlc?' + qs, {
+    headers: { 'X-Kite-Version': '3', 'Authorization': 'token ' + env.KITE_API_KEY + ':' + sess.access_token }
+  });
+  const data = await r.json();
+  if (r.status === 403 || (data && data.error_type === 'TokenException')) {
+    await env.SESSION.delete('session');
+    return json({ needLogin: true }, 401);
+  }
+  if (!r.ok || !data || !data.data) {
+    return json({ error: 'kite_error', detail: (data && data.message) || ('HTTP ' + r.status) }, 502);
+  }
+  const quotes = {};
+  Object.keys(data.data).forEach(k => {
+    const sym = k.split(':')[1] || k;
+    const d = data.data[k] || {};
+    quotes[sym] = { ltp: d.last_price || 0, close: (d.ohlc && d.ohlc.close) || 0 };
+  });
+  return json({ quotes, syncedAt: Date.now() });
 }
 
 async function sha256Hex(str) {

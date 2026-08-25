@@ -22,7 +22,8 @@
     secthresh: 'PG_SECTHRESH',
     baseline: 'PG_BASELINE',       // last-reviewed holdings snapshot (qty+avg+ltp)
     impactMeta: 'PG_IMPACTMETA',   // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
-    customsectors: 'PG_CUSTOMSECTORS'  // user-added sector names
+    customsectors: 'PG_CUSTOMSECTORS', // user-added sector names
+    watchlist: 'PG_WATCHLIST'      // [{symbol, ltp, close}] — non-owned tracked stocks
   };
 
   var UI = load(K.ui, {});
@@ -33,12 +34,14 @@
     zones: load(K.zones, {}),
     secthresh: load(K.secthresh, {}),      // {sector: maxPct} — invested basis
     customSectors: load(K.customsectors, []),  // user-added sector names
+    watchlist: load(K.watchlist, []),      // [{symbol, ltp, close}] — never enters portfolio maths
     baseline: load(K.baseline, null),      // {date, source, holdings:[{symbol,qty,avg,ltp}]}
     impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
     view: UI.view || 'dash',
     actionMode: UI.actionMode || 'stock',  // 'stock' | 'sector'
+    holdView: UI.holdView || 'holdings',   // 'holdings' | 'watchlist'
     holdSort: UI.holdSort || 'value',
     holdDir: UI.holdDir || 'desc',
     allocBasis: UI.allocBasis || 'invested',
@@ -50,7 +53,7 @@
     addDriver: null,
     expanded: {}
   };
-  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis, actionMode: state.actionMode }); }
+  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis, actionMode: state.actionMode, holdView: state.holdView }); }
 
   function load(k, dflt) {
     try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? dflt : v; }
@@ -328,7 +331,20 @@
     }
   }
 
+  function updateHoldViewToggle() {
+    var w = el('holdViewSeg'); if (!w) return;
+    w.querySelectorAll('.seg-btn').forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-hv') === state.holdView); });
+  }
+  function setHoldView(v) {
+    state.holdView = v; saveUI(); renderHoldings();
+    if (v === 'watchlist') syncWatchlist();
+  }
   function renderHoldings() {
+    updateHoldViewToggle();
+    var isWatch = state.holdView === 'watchlist';
+    var sortSeg = el('holdSort'); if (sortSeg) sortSeg.style.display = isWatch ? 'none' : '';
+    var hb = el('holdHeadBtn'); if (hb) { hb.textContent = '＋ New position'; hb.style.display = isWatch ? 'none' : ''; }
+    if (isWatch) { renderWatchlist(); return; }
     var wrap = el('holdList'); var has = state.holdings.length > 0;
     el('holdEmpty').hidden = has;
     el('holdCount').textContent = has ? '(' + state.holdings.length + ')' : '';
@@ -413,6 +429,60 @@
         '</div>' +
       '</div>';
     }).join('');
+  }
+
+  // ---------- Watchlist view ----------
+  function renderWatchlist() {
+    var wrap = el('holdList');
+    el('holdEmpty').hidden = true;
+    el('holdCount').textContent = state.watchlist.length ? '(' + state.watchlist.length + ')' : '';
+    var add = '<div class="watch-add">' +
+      '<input id="watchAddInput" class="code-input" type="text" placeholder="Add symbol — e.g. INFY" autocomplete="off" autocapitalize="characters" ' +
+        'onkeydown="if(event.key===\'Enter\')PG.addWatch(this.value)">' +
+      '<button class="ghost-btn" type="button" onclick="PG.addWatch(document.getElementById(\'watchAddInput\').value)">Add</button>' +
+    '</div>';
+    if (!state.watchlist.length) {
+      wrap.innerHTML = add + '<div class="empty-note">No watchlist stocks yet. Add symbols you want to track, set a <strong>Buy</strong> target under <strong>Settings → Sectors &amp; zones</strong>, and they appear in the <strong>Action → Buy</strong> zone when the price reaches it.</div>';
+      return;
+    }
+    var rows = state.watchlist.slice().sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; }).map(function (w) {
+      var sec = sectorOf(w.symbol), z = state.zones[w.symbol] || {};
+      var dayPct = w.close ? (w.ltp - w.close) / w.close * 100 : 0, dcls = dayPct >= 0 ? 'up' : 'down';
+      var meta;
+      if (z.buy != null && z.buy > 0 && w.ltp > 0) {
+        var d = (w.ltp - z.buy) / z.buy * 100, near = w.ltp <= z.buy;
+        meta = '<div class="wl-tgt ' + (near ? 'up' : '') + '">buy ' + money2(z.buy) + ' · ' +
+          (d <= 0 ? ('▼ ' + Math.abs(d).toFixed(1) + '% below') : (d.toFixed(1) + '% above')) + '</div>';
+      } else if (z.buy != null && z.buy > 0) {
+        meta = '<div class="wl-tgt">buy target ' + money2(z.buy) + '</div>';
+      } else {
+        meta = '<div class="hold-meta">no buy target — set one in Settings</div>';
+      }
+      return '<div class="hold wl-row" onclick="PG.openWatchCalc(\'' + esc(w.symbol) + '\')">' +
+        '<div class="hold-l"><div class="hold-top">' +
+          '<span class="hold-sym">' + esc(w.symbol) + '</span>' +
+          '<span class="hold-sec" style="color:' + sectorColor(sec) + '" onclick="event.stopPropagation();PG.openSectorSheet(\'' + esc(w.symbol) + '\')">' + esc(sec) + '</span>' +
+          '<span class="wl-tag">watch</span>' +
+        '</div>' + meta + '</div>' +
+        '<div class="hold-r">' +
+          '<div class="hold-val">' + (w.ltp ? money2(w.ltp) : '—') + '</div>' +
+          '<div class="hold-day"><span class="dl">Day</span> <span class="' + dcls + '">' + (w.close ? pct(dayPct) : '—') + '</span></div>' +
+          '<button class="wl-del" type="button" onclick="event.stopPropagation();PG.removeWatch(\'' + esc(w.symbol) + '\')">Remove</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    wrap.innerHTML = add + rows;
+  }
+  function openWatchCalc(sym) {
+    var w = state.watchlist.find(function (x) { return x.symbol === sym; });
+    if (state.view !== 'calc') state.prevView = state.view;
+    applyCalcMode('add');
+    var sel = el('calcStock'); if (sel) sel.value = '';
+    setView('calc');
+    calcPickStock('');
+    ['calcQty', 'calcAvg'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
+    if (w && w.ltp) { el('calcLtp').value = r2(w.ltp); el('buyPrice').value = r2(w.ltp); }
+    calc();
   }
 
   // ---------- Impact (effect of holdings changes since a baseline) ----------
@@ -843,19 +913,21 @@
 
     // sectors & zones table
     var se = el('sectorEditor');
-    if (!state.holdings.length) { se.innerHTML = '<div class="s-sub">Load holdings to set sectors and zones.</div>'; }
+    var zList = state.holdings.map(function (h) { return { symbol: h.symbol, watch: false }; })
+      .concat(state.watchlist.map(function (w) { return { symbol: w.symbol, watch: true }; }))
+      .sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; });
+    if (!zList.length) { se.innerHTML = '<div class="s-sub">Load holdings (or add watchlist stocks) to set sectors and zones.</div>'; }
     else {
-      var rows = state.holdings.slice().sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; })
-        .map(function (h) {
-          var sec = sectorOf(h.symbol), z = state.zones[h.symbol] || {};
-          var bv = (z.buy != null ? z.buy : ''), sv = (z.sell != null ? z.sell : '');
-          return '<div class="zt-row">' +
-            '<span class="zt-sym">' + esc(h.symbol) + '</span>' +
-            '<span class="zt-sec" style="color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(h.symbol) + '\')">' + esc(sec) + '</span>' +
-            '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + bv + '" oninput="PG.setZone(\'' + esc(h.symbol) + '\',\'buy\',this.value)">' +
-            '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + sv + '" oninput="PG.setZone(\'' + esc(h.symbol) + '\',\'sell\',this.value)">' +
-          '</div>';
-        }).join('');
+      var rows = zList.map(function (it) {
+        var sym = it.symbol, sec = sectorOf(sym), z = state.zones[sym] || {};
+        var bv = (z.buy != null ? z.buy : ''), sv = (z.sell != null ? z.sell : '');
+        return '<div class="zt-row">' +
+          '<span class="zt-sym">' + esc(sym) + (it.watch ? '<span class="zt-watch">watch</span>' : '') + '</span>' +
+          '<span class="zt-sec" style="color:' + sectorColor(sec) + '" onclick="PG.openSectorSheet(\'' + esc(sym) + '\')">' + esc(sec) + '</span>' +
+          '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + bv + '" oninput="PG.setZone(\'' + esc(sym) + '\',\'buy\',this.value)">' +
+          '<input class="zt-in" type="number" inputmode="decimal" placeholder="—" value="' + sv + '" oninput="PG.setZone(\'' + esc(sym) + '\',\'sell\',this.value)"' + (it.watch ? ' disabled title="Sell target applies to holdings only"' : '') + '>' +
+        '</div>';
+      }).join('');
       se.innerHTML = '<div class="zt-head"><span>Stock</span><span>Sector</span><span>Buy</span><span>Sell</span></div>' + rows;
     }
 
@@ -1055,6 +1127,15 @@
         (prem >= 20 ? sell.book : prem >= 10 ? sell.trim : sell.watch).push(it2);
       }
     });
+    // Watchlist stocks join the BUY zone only (you don't own them to sell).
+    state.watchlist.forEach(function (w) {
+      var z = state.zones[w.symbol] || {}, ltp = w.ltp;
+      if (ltp > 0 && z.buy != null && z.buy > 0 && ltp <= z.buy) {
+        var disc = (z.buy - ltp) / z.buy * 100;
+        var it = { sym: w.symbol, sec: sectorOf(w.symbol), ltp: ltp, target: z.buy, pct: disc, watch: true };
+        (disc >= 20 ? buy.deep : disc >= 10 ? buy.value : buy.acc).push(it);
+      }
+    });
     function srt(a) { a.sort(function (x, y) { return y.pct - x.pct; }); }
     [buy.deep, buy.value, buy.acc, sell.book, sell.trim, sell.watch].forEach(srt);
     return { buy: buy, sell: sell,
@@ -1156,8 +1237,10 @@
     var cls = kind === 'buy' ? 'up' : 'down';
     var arrow = kind === 'buy' ? '▼' : '▲';
     var word = kind === 'buy' ? 'below' : 'above';
-    return '<div class="az-row" onclick="PG.openCalc(\'' + esc(it.sym) + '\')">' +
-      '<div class="az-l"><span class="az-sym">' + esc(it.sym) + '</span>' +
+    var handler = it.watch ? 'openWatchCalc' : 'openCalc';
+    var tag = it.watch ? '<span class="wl-tag">watch</span>' : '';
+    return '<div class="az-row" onclick="PG.' + handler + '(\'' + esc(it.sym) + '\')">' +
+      '<div class="az-l"><span class="az-sym">' + esc(it.sym) + '</span>' + tag +
         '<span class="az-sec" style="color:' + sectorColor(it.sec) + '">' + esc(it.sec) + '</span></div>' +
       '<div class="az-r"><span class="az-pct ' + cls + '">' + arrow + ' ' + it.pct.toFixed(1) + '% ' + word + '</span>' +
         '<span class="az-meta">LTP ' + money2(it.ltp) + ' · target ' + money2(it.target) + '</span></div>' +
@@ -1340,6 +1423,48 @@
         if (res.status === 200 && res.body && res.body.holdings) { applyHoldings(res.body.holdings, 'zerodha'); }
       })
       .catch(function () {});
+    syncWatchlist();
+  }
+
+  // ---------- Watchlist (non-owned tracked stocks; never enters portfolio maths) ----------
+  function inWatch(sym) { return state.watchlist.some(function (w) { return w.symbol === sym; }); }
+  function isHeld(sym) { return state.holdings.some(function (h) { return h.symbol === sym; }); }
+  function addWatch(raw) {
+    var sym = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9&.\-]/g, '').slice(0, 20);
+    if (!sym) { toast('Enter a symbol.'); return; }
+    if (isHeld(sym)) { toast(sym + ' is already in your holdings.'); return; }
+    if (inWatch(sym)) { toast(sym + ' is already on the watchlist.'); return; }
+    state.watchlist.push({ symbol: sym, ltp: 0, close: 0 });
+    save(K.watchlist, state.watchlist);
+    var i = el('watchAddInput'); if (i) i.value = '';
+    renderHoldings(); renderSettings();
+    scheduleAutoBackup();
+    syncWatchlist();
+    toast('Added ' + sym + ' to watchlist.');
+  }
+  function removeWatch(sym) {
+    state.watchlist = state.watchlist.filter(function (w) { return w.symbol !== sym; });
+    save(K.watchlist, state.watchlist);
+    renderHoldings(); renderSettings(); renderAction();
+    scheduleAutoBackup();
+    toast('Removed ' + sym + ' from watchlist.');
+  }
+  function syncWatchlist() {
+    if (!WORKER) return;
+    var key = appKey(); if (!key) return;
+    var syms = state.watchlist.map(function (w) { return w.symbol; });
+    if (!syms.length) return;
+    fetch(WORKER + '/quote?k=' + encodeURIComponent(key) + '&i=' + encodeURIComponent(syms.join(',')), { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (res) {
+        if (res && res.quotes) {
+          state.watchlist.forEach(function (w) { var q = res.quotes[w.symbol]; if (q) { w.ltp = q.ltp || 0; w.close = q.close || 0; } });
+          save(K.watchlist, state.watchlist);
+          if (state.holdView === 'watchlist') renderHoldings();
+          renderAction();
+        }
+      })
+      .catch(function () {});
   }
 
   // Pull-to-refresh at the top of the page.
@@ -1384,6 +1509,7 @@
     refreshImpact();
     render();
     scheduleAutoBackup();
+    syncWatchlist();
   }
 
   // ---------- demo / backup ----------
@@ -1405,9 +1531,9 @@
   }
 
   function backupPayload() {
-    return { app: 'PortfolioGuidance', version: 6, exportedAt: new Date().toISOString(),
+    return { app: 'PortfolioGuidance', version: 7, exportedAt: new Date().toISOString(),
       holdings: state.holdings, overrides: state.overrides, zones: state.zones,
-      secthresh: state.secthresh, customSectors: state.customSectors,
+      secthresh: state.secthresh, customSectors: state.customSectors, watchlist: state.watchlist,
       baseline: state.baseline, impactMeta: state.impactMeta,
       ui: load(K.ui, {}), meta: state.meta };
   }
@@ -1417,6 +1543,7 @@
     if (j.zones) { state.zones = j.zones; save(K.zones, state.zones); }
     if (j.secthresh) { state.secthresh = j.secthresh; save(K.secthresh, state.secthresh); }
     if (j.customSectors) { state.customSectors = j.customSectors; save(K.customsectors, state.customSectors); }
+    if (j.watchlist) { state.watchlist = j.watchlist; save(K.watchlist, state.watchlist); }
     if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
     // Carry the impact baseline across devices if present; else seed fresh from restored holdings.
     state.baseline = j.baseline || null; save(K.baseline, state.baseline);
@@ -1604,6 +1731,11 @@
   }
 
   function wireSegs() {
+    var hvSeg = el('holdViewSeg');
+    if (hvSeg) hvSeg.addEventListener('click', function (e) {
+      var b = e.target.closest('.seg-btn'); if (!b) return;
+      setHoldView(b.getAttribute('data-hv'));
+    });
     el('holdSort').addEventListener('click', function (e) {
       var b = e.target.closest('.seg-btn'); if (!b) return;
       var key = b.getAttribute('data-sort');
@@ -1647,6 +1779,8 @@
       setTimeout(sync, 300); // token now present in the Worker session
     } else if (state.meta.source === 'zerodha') {
       setTimeout(refreshSilent, 200); // quietly refresh prices on open
+    } else {
+      setTimeout(syncWatchlist, 300); // watchlist prices even if holdings aren't refreshing
     }
   }
 
@@ -1658,6 +1792,7 @@
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
+    addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
     setCap: setCap, setActionMode: setActionMode,
     gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect

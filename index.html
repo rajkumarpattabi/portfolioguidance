@@ -63,8 +63,12 @@
     <!-- HOLDINGS -->
     <div class="view" id="v-holdings">
       <div class="hold-head">
-        <h3 class="section-title" style="margin:0">Holdings <span class="muted" id="holdCount"></span></h3>
-        <button class="mini-btn" type="button" onclick="PG.openCalcNew()">＋ New position</button>
+        <div class="seg" id="holdViewSeg">
+          <button class="seg-btn active" data-hv="holdings">Holdings</button>
+          <button class="seg-btn" data-hv="watchlist">Watchlist</button>
+        </div>
+        <button class="mini-btn" id="holdHeadBtn" type="button" onclick="PG.openCalcNew()">＋ New position</button>
+        <span id="holdCount" hidden></span>
       </div>
       <div class="seg wide" id="holdSort">
         <button class="seg-btn active" data-sort="value">Value<span class="sarrow"></span></button>
