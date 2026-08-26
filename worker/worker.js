@@ -146,7 +146,10 @@ async function handleQuote(url, env) {
   return json({ quotes, syncedAt: Date.now(), source: 'yahoo' });
 }
 
-// Per-stock fundamentals: Yahoo (technicals) + Screener (valuation/quality ratios), cached daily in KV.
+// Fundamentals cache schema version — bump to invalidate all cached entries after a parser/shape change.
+const FVER = 3;
+
+// Per-stock fundamentals: Yahoo (moving averages) + Screener (ratios, 52-wk, shareholding), cached daily in KV.
 async function handleFundamentals(url, env) {
   if (!checkKey(url, env)) return json({ error: 'unauthorized' }, 401);
   const symsParam = url.searchParams.get('i') || url.searchParams.get('symbols') || '';
@@ -155,69 +158,100 @@ async function handleFundamentals(url, env) {
   const today = utcDateStr();
   const out = {};
 
-  await Promise.all(syms.map(async (sym) => {
-    const cacheKey = 'f:' + sym + ':' + today;
-    try { const c = await env.SESSION.get(cacheKey); if (c) { out[sym] = JSON.parse(c); return; } } catch (e) {}
+  // Throttle: process in small batches so Screener isn't hit with a big parallel burst (which it rate-limits).
+  const BATCH = 4;
+  for (let i = 0; i < syms.length; i += BATCH) {
+    await Promise.all(syms.slice(i, i + BATCH).map(sym => processFund(sym, out, env, today)));
+  }
+  return json({ fundamentals: out, syncedAt: Date.now(), ver: FVER });
+}
 
-    const f = { asOf: today };
-    // --- Yahoo 1y chart → ONLY the moving averages (Screener doesn't expose these cleanly).
-    //     Also keep the last close as a price fallback for symbols not on Screener. ---
+async function processFund(sym, out, env, today) {
+  const cacheKey = 'f:' + FVER + ':' + sym + ':' + today;
+  try { const c = await env.SESSION.get(cacheKey); if (c) { out[sym] = JSON.parse(c); return; } } catch (e) {}
+
+  const f = { asOf: today, ver: FVER };
+
+  // Yahoo + Screener in parallel per symbol.
+  const [yahoo, html] = await Promise.all([fetchYahooChart(sym), fetchScreenerHtml(sym)]);
+
+  if (yahoo) { f.sma50 = yahoo.sma50; f.sma200 = yahoo.sma200; if (yahoo.price != null) f.price = yahoo.price; }
+
+  let screenerOk = false;
+  if (html) {
     try {
-      const yq = sym.indexOf('.') >= 0 ? sym : (sym + '.NS');
-      const y = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yq) + '?interval=1d&range=1y',
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } });
+      f.pe = ratio(html, 'Stock P/E');
+      f.bookValue = ratio(html, 'Book Value');
+      f.marketCap = ratio(html, 'Market Cap');
+      f.divYield = ratio(html, 'Dividend Yield');
+      f.roce = ratio(html, 'ROCE');
+      f.roe = ratio(html, 'ROE');
+      const hl = ratio2(html, 'High / Low');
+      if (hl) { f.wk52High = hl[0]; f.wk52Low = hl[1]; }
+      const sp = ratio(html, 'Current Price');
+      if (sp != null) f.price = sp;
+      if (f.price != null && f.bookValue) f.pb = round2(f.price / f.bookValue);
+      if (f.price != null && f.pe) f.eps = round2(f.price / f.pe);
+      const sec = shSection(html);
+      if (sec) {
+        const qs = shQuarters(sec);
+        const packSh = function (arr) {
+          if (!arr || !arr.length) return null;
+          const n = arr.length;
+          return { now: arr[n - 1], qoq: n >= 2 ? round2(arr[n - 1] - arr[n - 2]) : null, yoy: n >= 5 ? round2(arr[n - 1] - arr[n - 5]) : null };
+        };
+        f.shareholding = { promoter: packSh(shRow(sec, 'Promoters')), fii: packSh(shRow(sec, 'FIIs')), dii: packSh(shRow(sec, 'DIIs')) };
+        if (qs.length) f.shAsOf = qs[qs.length - 1];
+      }
+      screenerOk = (f.pe != null || f.roce != null || !!f.shareholding);
+    } catch (e) {}
+  }
+
+  out[sym] = f;
+  // Only cache once Screener actually came through — otherwise a transient miss would freeze a
+  // Yahoo-only partial for the whole day. Partials are returned but NOT cached, so they retry.
+  if (screenerOk) { try { await env.SESSION.put(cacheKey, JSON.stringify(f), { expirationTtl: 90000 }); } catch (e) {} }
+}
+
+// Yahoo 1y chart → SMA50, SMA200 (+ last close as price fallback). One retry on failure.
+async function fetchYahooChart(sym) {
+  const yq = sym.indexOf('.') >= 0 ? sym : (sym + '.NS');
+  const u = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yq) + '?interval=1d&range=1y';
+  for (let a = 0; a < 2; a++) {
+    try {
+      const y = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } });
       if (y.ok) {
         const d = await y.json();
         const res = d && d.chart && d.chart.result && d.chart.result[0];
         const q = res && res.indicators && res.indicators.quote && res.indicators.quote[0];
         const closes = (q && q.close) ? q.close.filter(x => x != null) : [];
-        if (closes.length) {
-          f.sma50 = sma(closes, 50);
-          f.sma200 = sma(closes, 200);
-          f.price = closes[closes.length - 1];   // fallback only; app prefers Kite LTP / Screener price
-        }
+        if (closes.length) return { sma50: sma(closes, 50), sma200: sma(closes, 200), price: closes[closes.length - 1] };
+        return null;
       }
     } catch (e) {}
+  }
+  return null;
+}
 
-    // --- Screener → valuation/quality ratios + 52-wk H/L + current price (preferred). ---
-    try {
-      const s = await fetch('https://www.screener.in/company/' + encodeURIComponent(sym) + '/',
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' } });
-      if (s.ok) {
-        const html = await s.text();
-        f.pe = ratio(html, 'Stock P/E');
-        f.bookValue = ratio(html, 'Book Value');
-        f.marketCap = ratio(html, 'Market Cap');   // in ₹ crore
-        f.divYield = ratio(html, 'Dividend Yield');
-        f.roce = ratio(html, 'ROCE');
-        f.roe = ratio(html, 'ROE');
-        const hl = ratio2(html, 'High / Low');     // 52-wk high / low
-        if (hl) { f.wk52High = hl[0]; f.wk52Low = hl[1]; }
-        const sp = ratio(html, 'Current Price');
-        if (sp != null) f.price = sp;              // Screener price preferred over Yahoo fallback
-        // Valuation ratios are computed against Screener's price so PE/P&B/EPS reconcile.
-        if (f.price != null && f.bookValue) f.pb = round2(f.price / f.bookValue);
-        if (f.price != null && f.pe) f.eps = round2(f.price / f.pe);
-        // Shareholding (quarterly) → promoter / FII / DII: latest % + QoQ + YoY (piggybacks this same fetch).
-        const sec = shSection(html);
-        if (sec) {
-          const qs = shQuarters(sec);
-          const packSh = function (arr) {
-            if (!arr || !arr.length) return null;
-            const n = arr.length;
-            return { now: arr[n - 1], qoq: n >= 2 ? round2(arr[n - 1] - arr[n - 2]) : null, yoy: n >= 5 ? round2(arr[n - 1] - arr[n - 5]) : null };
-          };
-          f.shareholding = { promoter: packSh(shRow(sec, 'Promoters')), fii: packSh(shRow(sec, 'FIIs')), dii: packSh(shRow(sec, 'DIIs')) };
-          if (qs.length) f.shAsOf = qs[qs.length - 1];
+// Screener company page HTML. Tries /consolidated/ then plain, with one retry each; validates it's a company page.
+async function fetchScreenerHtml(sym) {
+  const es = encodeURIComponent(sym);
+  const urls = ['https://www.screener.in/company/' + es + '/consolidated/', 'https://www.screener.in/company/' + es + '/'];
+  for (const u of urls) {
+    for (let a = 0; a < 2; a++) {
+      try {
+        const s = await fetch(u, { headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9'
+        } });
+        if (s.ok) {
+          const html = await s.text();
+          if (html && (html.indexOf('Stock P/E') >= 0 || html.indexOf('id="shareholding"') >= 0)) return html;
         }
-      }
-    } catch (e) {}
-
-    out[sym] = f;
-    try { await env.SESSION.put(cacheKey, JSON.stringify(f), { expirationTtl: 90000 }); } catch (e) {}
-  }));
-
-  return json({ fundamentals: out, syncedAt: Date.now() });
+      } catch (e) {}
+    }
+  }
+  return null;
 }
 function sma(arr, n) { if (arr.length < n) n = arr.length; if (!n) return null; let s = 0; for (let i = arr.length - n; i < arr.length; i++) s += arr[i]; return Math.round((s / n) * 100) / 100; }
 function round2(n) { return Math.round(n * 100) / 100; }

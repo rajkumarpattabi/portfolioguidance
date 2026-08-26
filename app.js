@@ -10,6 +10,7 @@
   var CFG = window.PG_CONFIG || {};
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
+  var FUND_VER = 3;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -749,6 +750,7 @@
   function toggleHold(sym) {
     state.holdExpanded = (state.holdExpanded === sym) ? null : sym;
     renderHoldings();
+    if (state.holdExpanded && needsFund(state.funds[baseSymbol(sym)])) fetchFundamentals();
   }
 
   // ---------- calculator ----------
@@ -1471,20 +1473,21 @@
   }
 
   // ---------- Fundamentals (Yahoo technicals + Screener ratios, daily) ----------
+  // Stale if: never fetched, not today, old schema, or Screener didn't come through (no PE and no shareholding).
+  function needsFund(f) { return !f || f.asOf !== todayStr() || f.ver !== FUND_VER || (f.pe == null && !f.shareholding); }
   function fetchFundamentals(force) {
     if (!WORKER) return;
     var key = appKey(); if (!key) return;
-    var today = todayStr();
     var symset = {};
     state.holdings.forEach(function (h) { symset[baseSymbol(h.symbol)] = 1; });
-    var list = Object.keys(symset).filter(function (s) { var f = state.funds[s]; return force || !f || f.asOf !== today; });
+    var list = Object.keys(symset).filter(function (s) { return force || needsFund(state.funds[s]); });
     if (!list.length) return;
     fetch(WORKER + '/fundamentals?k=' + encodeURIComponent(key) + '&i=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .then(function (res) {
         if (res && res.fundamentals) {
           Object.keys(res.fundamentals).forEach(function (s) {
-            var f = res.fundamentals[s]; f.asOf = f.asOf || today; state.funds[s] = f;
+            var f = res.fundamentals[s]; f.asOf = f.asOf || todayStr(); if (f.ver == null) f.ver = FUND_VER; state.funds[s] = f;
           });
           save(K.funds, state.funds);
           if (state.holdExpanded) renderHoldings();
