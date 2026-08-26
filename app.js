@@ -1524,8 +1524,17 @@
     if (f.sma50 != null) rows.push(row('50-DMA', money0(f.sma50) + dmaTag(px, f.sma50)));
     if (f.sma200 != null) rows.push(row('200-DMA', money0(f.sma200) + dmaTag(px, f.sma200)));
     if (!rows.length) return '';
-    return '<div class="fb-block"><div class="fb-head">Fundamentals' + (f.asOf ? ' <span class="fb-asof">as of ' + esc(fmtDate(f.asOf)) + '</span>' : '') + '</div>' + rows.join('') + '</div>';
+    var note = '<div class="fb-note" hidden>' +
+      '<b>52-wk (n%)</b> — where the price sits in its 1-year range: 0% = at the low, 100% = at the high.<br>' +
+      '<b>50/200-DMA (▲/▼ n%)</b> — how far the price is above (▲) or below (▼) its 50-day / 200-day average. Above = uptrend; 50-day is short-term, 200-day long-term.' +
+      '</div>';
+    return '<div class="fb-block">' +
+      '<div class="fb-head">Fundamentals' + (f.asOf ? ' <span class="fb-asof">as of ' + esc(fmtDate(f.asOf)) + '</span>' : '') +
+        '<button class="fb-info" type="button" onclick="event.stopPropagation();PG.fbInfo(this)" aria-label="What do these mean?">ⓘ</button></div>' +
+      rows.join('') + note +
+    '</div>';
   }
+  function fbInfo(btn) { var b = btn.closest('.fb-block'); if (!b) return; var n = b.querySelector('.fb-note'); if (n) n.hidden = !n.hidden; }
 
   // Pull-to-refresh at the top of the page.
   function wirePull() {
@@ -1852,6 +1861,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
+    fbInfo: fbInfo,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
