@@ -198,6 +198,18 @@ async function handleFundamentals(url, env) {
         // Valuation ratios are computed against Screener's price so PE/P&B/EPS reconcile.
         if (f.price != null && f.bookValue) f.pb = round2(f.price / f.bookValue);
         if (f.price != null && f.pe) f.eps = round2(f.price / f.pe);
+        // Shareholding (quarterly) → promoter / FII / DII: latest % + QoQ + YoY (piggybacks this same fetch).
+        const sec = shSection(html);
+        if (sec) {
+          const qs = shQuarters(sec);
+          const packSh = function (arr) {
+            if (!arr || !arr.length) return null;
+            const n = arr.length;
+            return { now: arr[n - 1], qoq: n >= 2 ? round2(arr[n - 1] - arr[n - 2]) : null, yoy: n >= 5 ? round2(arr[n - 1] - arr[n - 5]) : null };
+          };
+          f.shareholding = { promoter: packSh(shRow(sec, 'Promoters')), fii: packSh(shRow(sec, 'FIIs')), dii: packSh(shRow(sec, 'DIIs')) };
+          if (qs.length) f.shAsOf = qs[qs.length - 1];
+        }
       }
     } catch (e) {}
 
@@ -220,6 +232,30 @@ function ratio(html, label) {
   return m ? numOf(m[1]) : null;
 }
 function numOf(s) { if (s == null) return null; const v = parseFloat(String(s).replace(/,/g, '')); return isFinite(v) ? v : null; }
+// --- Screener shareholding (quarterly table) parsers ---
+function shSection(html) {
+  const i = html.indexOf('id="shareholding"');
+  return i < 0 ? '' : html.slice(i, i + 20000);   // covers the quarterly table (yearly table follows; we read the first/quarterly one)
+}
+function shQuarters(sec) {
+  const thead = sec.match(/<thead[\s\S]*?<\/thead>/);
+  if (!thead) return [];
+  const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
+  return ths.map(t => t.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()).filter(Boolean);
+}
+function shRow(sec, label) {
+  const rows = sec.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  for (let r = 0; r < rows.length; r++) {
+    const text = rows[r].replace(/<[^>]*>/g, ' ');
+    if (new RegExp('(^|\\s)' + label + '(\\s|\\+|<)').test(text)) {
+      const cells = rows[r].match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
+      const nums = [];
+      cells.forEach(c => { const t = c.replace(/<[^>]*>/g, '').replace(/,/g, '').trim(); const v = parseFloat(t); if (isFinite(v)) nums.push(v); });
+      if (nums.length) return nums;
+    }
+  }
+  return [];
+}
 // Two numbers after a label (e.g. "High / Low" → [high, low]).
 function ratio2(html, label) {
   let i = html.indexOf('>' + label + '<');

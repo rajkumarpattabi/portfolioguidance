@@ -1523,10 +1523,22 @@
     }
     if (f.sma50 != null) rows.push(row('50-DMA', money0(f.sma50) + dmaTag(px, f.sma50)));
     if (f.sma200 != null) rows.push(row('200-DMA', money0(f.sma200) + dmaTag(px, f.sma200)));
+    // Ownership (promoter / FII / DII), quarterly
+    var sh = f.shareholding;
+    if (sh && (sh.promoter || sh.fii || sh.dii)) {
+      function od(d) { if (d == null) return ''; var c = d >= 0 ? 'up' : 'down'; return ' <span class="' + c + '">' + (d >= 0 ? '+' : '−') + Math.abs(d).toFixed(1) + '</span>'; }
+      function orow(lbl, o) {
+        if (!o || o.now == null) return;
+        rows.push(row(lbl, o.now.toFixed(1) + '% <span class="fb-mut">Q</span>' + od(o.qoq) + ' <span class="fb-mut">Y</span>' + od(o.yoy)));
+      }
+      rows.push('<div class="fb-sub">Ownership' + (f.shAsOf ? ' · ' + esc(f.shAsOf) : '') + '</div>');
+      orow('Promoter', sh.promoter); orow('FII', sh.fii); orow('DII', sh.dii);
+    }
     if (!rows.length) return '';
     var note = '<div class="fb-note" hidden>' +
       '<b>52-wk (n%)</b> — where the price sits in its 1-year range: 0% = at the low, 100% = at the high.<br>' +
-      '<b>50/200-DMA (▲/▼ n%)</b> — how far the price is above (▲) or below (▼) its 50-day / 200-day average. Above = uptrend; 50-day is short-term, 200-day long-term.' +
+      '<b>50/200-DMA (▲/▼ n%)</b> — how far the price is above (▲) or below (▼) its 50-day / 200-day average. Above = uptrend; 50-day is short-term, 200-day long-term.<br>' +
+      '<b>Ownership</b> — Promoter / FII / DII stake %. <b>Q</b> = change vs last quarter, <b>Y</b> = vs same quarter last year (percentage points). Rising DII/FII = institutions buying; falling promoter stake is worth noting.' +
       '</div>';
     return '<div class="fb-block">' +
       '<div class="fb-head">Fundamentals' + (f.asOf ? ' <span class="fb-asof">as of ' + esc(fmtDate(f.asOf)) + '</span>' : '') +
