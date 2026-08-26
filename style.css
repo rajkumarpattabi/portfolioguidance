@@ -18,6 +18,7 @@ header{position:sticky;top:0;z-index:20;background:linear-gradient(#12151c,#1215
 .h-top{display:flex;align-items:center;justify-content:space-between}
 .brand{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
 .brand .dot{color:var(--accent);font-size:20px}
+.brand-ver{font-size:9px;font-weight:600;color:var(--mut2);margin-left:5px;letter-spacing:.3px;align-self:flex-start;margin-top:2px}
 .h-actions{display:flex;gap:8px}
 .sync-chip{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);
   padding:7px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer}
