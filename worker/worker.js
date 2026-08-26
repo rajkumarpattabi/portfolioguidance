@@ -5,7 +5,8 @@
  *   GET /login?k=APP_KEY&redirect=<app url>  -> redirects to Kite login
  *   GET /callback?request_token=...          -> Kite calls this; exchanges token, stores session, redirects back
  *   GET /holdings?k=APP_KEY                   -> returns your live holdings (or {needLogin:true})
- *   GET /quote?k=APP_KEY&i=INFY,TCS           -> live LTP + close for watchlist symbols (NSE)
+ *   GET /quote?k=APP_KEY&i=INFY,TCS           -> LTP + prev close for watchlist symbols via Yahoo (no Kite session)
+ *   GET /fundamentals?k=APP_KEY&i=INFY,TCS    -> per-stock fundamentals (Yahoo technicals + Screener ratios), daily-cached
  *
  * Bindings expected (see wrangler.toml):
  *   KV namespace: SESSION
@@ -28,6 +29,7 @@ export default {
       if (path === '/callback') return handleCallback(url, env);
       if (path === '/holdings') return cors(await handleHoldings(url, env), origin);
       if (path === '/quote') return cors(await handleQuote(url, env), origin);
+      if (path === '/fundamentals') return cors(await handleFundamentals(url, env), origin);
       if (path === '/') return cors(json({ ok: true, service: 'portfolioguidance-worker' }), origin);
       return cors(json({ error: 'not_found' }, 404), origin);
     } catch (e) {
@@ -117,36 +119,116 @@ async function handleHoldings(url, env) {
   return json({ holdings, user: sess.user, syncedAt: Date.now() });
 }
 
-// Live LTP + close for watchlist (non-holding) symbols via Kite quote/ohlc. Assumes NSE.
+// Live LTP + previous close for watchlist symbols via Yahoo Finance (NSE = <sym>.NS).
+// Deliberately does NOT touch the Kite session — Kite's quote/OHLC needs the paid
+// Market-Data plan (403 PermissionException on the free Personal tier), and Yahoo is
+// free + works without a Kite login. Prices are ~15 min delayed, fine for watch targets.
 async function handleQuote(url, env) {
   if (!checkKey(url, env)) return json({ error: 'unauthorized' }, 401);
-  const raw = await env.SESSION.get('session');
-  if (!raw) return json({ needLogin: true }, 401);
-  let sess; try { sess = JSON.parse(raw); } catch (e) { return json({ needLogin: true }, 401); }
-
   const symsParam = url.searchParams.get('i') || url.searchParams.get('symbols') || '';
-  const syms = symsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 200);
+  const syms = symsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 50);
   if (!syms.length) return json({ quotes: {} });
 
-  const qs = syms.map(s => 'i=' + encodeURIComponent('NSE:' + s)).join('&');
-  const r = await fetch(KITE + '/quote/ohlc?' + qs, {
-    headers: { 'X-Kite-Version': '3', 'Authorization': 'token ' + env.KITE_API_KEY + ':' + sess.access_token }
-  });
-  const data = await r.json();
-  if (r.status === 403 || (data && data.error_type === 'TokenException')) {
-    await env.SESSION.delete('session');
-    return json({ needLogin: true }, 401);
-  }
-  if (!r.ok || !data || !data.data) {
-    return json({ error: 'kite_error', detail: (data && data.message) || ('HTTP ' + r.status) }, 502);
-  }
   const quotes = {};
-  Object.keys(data.data).forEach(k => {
-    const sym = k.split(':')[1] || k;
-    const d = data.data[k] || {};
-    quotes[sym] = { ltp: d.last_price || 0, close: (d.ohlc && d.ohlc.close) || 0 };
-  });
-  return json({ quotes, syncedAt: Date.now() });
+  await Promise.all(syms.map(async (sym) => {
+    try {
+      const yq = sym.indexOf('.') >= 0 ? sym : (sym + '.NS');
+      const y = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yq) + '?interval=1d&range=1d',
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } });
+      if (!y.ok) return;
+      const d = await y.json();
+      const m = d && d.chart && d.chart.result && d.chart.result[0] && d.chart.result[0].meta;
+      if (m && m.regularMarketPrice != null) {
+        quotes[sym] = { ltp: m.regularMarketPrice, close: (m.chartPreviousClose != null ? m.chartPreviousClose : (m.previousClose || 0)) };
+      }
+    } catch (e) { /* skip this symbol; others still return */ }
+  }));
+  return json({ quotes, syncedAt: Date.now(), source: 'yahoo' });
+}
+
+// Per-stock fundamentals: Yahoo (technicals) + Screener (valuation/quality ratios), cached daily in KV.
+async function handleFundamentals(url, env) {
+  if (!checkKey(url, env)) return json({ error: 'unauthorized' }, 401);
+  const symsParam = url.searchParams.get('i') || url.searchParams.get('symbols') || '';
+  const syms = symsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 60);
+  if (!syms.length) return json({ fundamentals: {} });
+  const today = utcDateStr();
+  const out = {};
+
+  await Promise.all(syms.map(async (sym) => {
+    const cacheKey = 'f:' + sym + ':' + today;
+    try { const c = await env.SESSION.get(cacheKey); if (c) { out[sym] = JSON.parse(c); return; } } catch (e) {}
+
+    const f = { asOf: today };
+    // --- Yahoo 1y chart → ONLY the moving averages (Screener doesn't expose these cleanly).
+    //     Also keep the last close as a price fallback for symbols not on Screener. ---
+    try {
+      const yq = sym.indexOf('.') >= 0 ? sym : (sym + '.NS');
+      const y = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yq) + '?interval=1d&range=1y',
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } });
+      if (y.ok) {
+        const d = await y.json();
+        const res = d && d.chart && d.chart.result && d.chart.result[0];
+        const q = res && res.indicators && res.indicators.quote && res.indicators.quote[0];
+        const closes = (q && q.close) ? q.close.filter(x => x != null) : [];
+        if (closes.length) {
+          f.sma50 = sma(closes, 50);
+          f.sma200 = sma(closes, 200);
+          f.price = closes[closes.length - 1];   // fallback only; app prefers Kite LTP / Screener price
+        }
+      }
+    } catch (e) {}
+
+    // --- Screener → valuation/quality ratios + 52-wk H/L + current price (preferred). ---
+    try {
+      const s = await fetch('https://www.screener.in/company/' + encodeURIComponent(sym) + '/',
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' } });
+      if (s.ok) {
+        const html = await s.text();
+        f.pe = ratio(html, 'Stock P/E');
+        f.bookValue = ratio(html, 'Book Value');
+        f.marketCap = ratio(html, 'Market Cap');   // in ₹ crore
+        f.divYield = ratio(html, 'Dividend Yield');
+        f.roce = ratio(html, 'ROCE');
+        f.roe = ratio(html, 'ROE');
+        const hl = ratio2(html, 'High / Low');     // 52-wk high / low
+        if (hl) { f.wk52High = hl[0]; f.wk52Low = hl[1]; }
+        const sp = ratio(html, 'Current Price');
+        if (sp != null) f.price = sp;              // Screener price preferred over Yahoo fallback
+        // Valuation ratios are computed against Screener's price so PE/P&B/EPS reconcile.
+        if (f.price != null && f.bookValue) f.pb = round2(f.price / f.bookValue);
+        if (f.price != null && f.pe) f.eps = round2(f.price / f.pe);
+      }
+    } catch (e) {}
+
+    out[sym] = f;
+    try { await env.SESSION.put(cacheKey, JSON.stringify(f), { expirationTtl: 90000 }); } catch (e) {}
+  }));
+
+  return json({ fundamentals: out, syncedAt: Date.now() });
+}
+function sma(arr, n) { if (arr.length < n) n = arr.length; if (!n) return null; let s = 0; for (let i = arr.length - n; i < arr.length; i++) s += arr[i]; return Math.round((s / n) * 100) / 100; }
+function round2(n) { return Math.round(n * 100) / 100; }
+function utcDateStr() { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
+// Screener top-ratios parser: locate the label, then the first number that follows.
+function ratio(html, label) {
+  let i = html.indexOf('>' + label + '<');
+  if (i < 0) i = html.indexOf(label);
+  if (i < 0) return null;
+  const seg = html.slice(i, i + 400);
+  const m = seg.match(/class="number"[^>]*>\s*([-\d.,]+)/) || seg.match(/>\s*([-\d][\d.,]*)\s*</);
+  return m ? numOf(m[1]) : null;
+}
+function numOf(s) { if (s == null) return null; const v = parseFloat(String(s).replace(/,/g, '')); return isFinite(v) ? v : null; }
+// Two numbers after a label (e.g. "High / Low" → [high, low]).
+function ratio2(html, label) {
+  let i = html.indexOf('>' + label + '<');
+  if (i < 0) i = html.indexOf(label);
+  if (i < 0) return null;
+  const seg = html.slice(i, i + 400);
+  const nums = []; const re = /class="number"[^>]*>\s*([-\d.,]+)/g; let m;
+  while ((m = re.exec(seg)) && nums.length < 2) nums.push(numOf(m[1]));
+  return nums.length >= 2 ? nums : null;
 }
 
 async function sha256Hex(str) {

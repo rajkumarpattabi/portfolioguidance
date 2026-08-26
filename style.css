@@ -107,6 +107,17 @@ main{flex:1;padding:16px}
 .he-v{font-weight:700}
 .he-v.up{color:var(--up)}.he-v.down{color:var(--down)}
 .he-v.be{color:#ffcf8f}
+
+/* fundamentals block (stock detail) */
+.fb-block{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.fb-head{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--accent);margin-bottom:6px}
+.fb-asof{color:var(--mut2);font-weight:600;text-transform:none;letter-spacing:0;font-size:10px;margin-left:6px}
+.fb-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.fb-row:last-child{border-bottom:none}
+.fb-l{color:var(--mut);flex:none}
+.fb-v{font-weight:700;text-align:right}
+.fb-v .up{color:var(--up)}.fb-v .down{color:var(--down)}
+.fb-mut{color:var(--mut2);font-weight:600}
 .he-wtblock{margin-top:4px;padding-top:8px;border-top:1px solid var(--line)}
 .he-wt-r{display:grid;grid-template-columns:1fr 68px 68px;gap:8px;padding:6px 2px;font-size:13px;align-items:center}
 .he-wt-r span:not(.c1){text-align:right;font-weight:700}

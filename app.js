@@ -23,7 +23,8 @@
     baseline: 'PG_BASELINE',       // last-reviewed holdings snapshot (qty+avg+ltp)
     impactMeta: 'PG_IMPACTMETA',   // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
     customsectors: 'PG_CUSTOMSECTORS', // user-added sector names
-    watchlist: 'PG_WATCHLIST'      // [{symbol, ltp, close}] — non-owned tracked stocks
+    watchlist: 'PG_WATCHLIST',     // [{symbol, ltp, close}] — non-owned tracked stocks
+    funds: 'PG_FUNDS'              // {symbol: {asOf, price, pe, pb, ...}} — daily fundamentals cache
   };
 
   var UI = load(K.ui, {});
@@ -35,6 +36,7 @@
     secthresh: load(K.secthresh, {}),      // {sector: maxPct} — invested basis
     customSectors: load(K.customsectors, []),  // user-added sector names
     watchlist: load(K.watchlist, []),      // [{symbol, ltp, close}] — never enters portfolio maths
+    funds: load(K.funds, {}),              // {baseSymbol: {asOf, ...fundamentals}}
     baseline: load(K.baseline, null),      // {date, source, holdings:[{symbol,qty,avg,ltp}]}
     impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
@@ -407,6 +409,7 @@
               '<div class="he-wt-r"><span class="c1">In portfolio</span><span>' + pwInv.toFixed(1) + '%</span><span>' + pwVal.toFixed(1) + '%</span></div>' +
             '</div>' +
           '</div>' +
+          fundBlock(baseSymbol(h.symbol), h.ltp) +
           '<div class="he-actions">' +
             '<button class="he-actbtn add" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'add\')">＋ Add / Average</button>' +
             '<button class="he-actbtn trim" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'trim\')">− Trim</button>' +
@@ -1467,6 +1470,63 @@
       .catch(function () {});
   }
 
+  // ---------- Fundamentals (Yahoo technicals + Screener ratios, daily) ----------
+  function fetchFundamentals(force) {
+    if (!WORKER) return;
+    var key = appKey(); if (!key) return;
+    var today = todayStr();
+    var symset = {};
+    state.holdings.forEach(function (h) { symset[baseSymbol(h.symbol)] = 1; });
+    var list = Object.keys(symset).filter(function (s) { var f = state.funds[s]; return force || !f || f.asOf !== today; });
+    if (!list.length) return;
+    fetch(WORKER + '/fundamentals?k=' + encodeURIComponent(key) + '&i=' + encodeURIComponent(list.join(',')), { cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (res) {
+        if (res && res.fundamentals) {
+          Object.keys(res.fundamentals).forEach(function (s) {
+            var f = res.fundamentals[s]; f.asOf = f.asOf || today; state.funds[s] = f;
+          });
+          save(K.funds, state.funds);
+          if (state.holdExpanded) renderHoldings();
+        }
+      })
+      .catch(function () {});
+  }
+  function dmaTag(price, dma) {
+    if (price == null || !dma) return '';
+    var d = (price - dma) / dma * 100, cls = d >= 0 ? 'up' : 'down';
+    return ' <span class="' + cls + '">(' + (d >= 0 ? '▲' : '▼') + Math.abs(d).toFixed(1) + '%)</span>';
+  }
+  function fundBlock(sym, refPrice) {
+    var f = state.funds[sym]; if (!f) return '';
+    // Price reference for technicals (52-wk position, DMA deltas): prefer the live Kite LTP,
+    // fall back to Screener/Yahoo price. Valuation ratios (PE/P&B/EPS) stay Screener-consistent.
+    var px = (refPrice != null && refPrice > 0) ? refPrice : f.price;
+    function row(l, v) { return '<div class="fb-row"><span class="fb-l">' + l + '</span><span class="fb-v">' + v + '</span></div>'; }
+    var rows = [];
+    var val = [];
+    if (f.pe != null) val.push('PE ' + f.pe);
+    if (f.pb != null) val.push('P/B ' + f.pb);
+    if (f.bookValue != null) val.push('Book ' + money0(f.bookValue));
+    if (val.length) rows.push(row('Valuation', val.join(' · ')));
+    var si = [];
+    if (f.marketCap != null) si.push('Mkt cap ₹' + inr0.format(Math.round(f.marketCap)) + ' Cr');
+    if (f.divYield != null) si.push('Div ' + f.divYield + '%');
+    if (si.length) rows.push(row('Size / income', si.join(' · ')));
+    var ql = [];
+    if (f.roce != null) ql.push('ROCE ' + f.roce + '%');
+    if (f.roe != null) ql.push('ROE ' + f.roe + '%');
+    if (ql.length) rows.push(row('Quality', ql.join(' · ')));
+    if (f.wk52Low != null && f.wk52High != null) {
+      var pos = (px != null && f.wk52High > f.wk52Low) ? Math.round((px - f.wk52Low) / (f.wk52High - f.wk52Low) * 100) : null;
+      rows.push(row('52-wk', money0(f.wk52Low) + ' – ' + money0(f.wk52High) + (pos != null ? ' <span class="fb-mut">(' + pos + '%)</span>' : '')));
+    }
+    if (f.sma50 != null) rows.push(row('50-DMA', money0(f.sma50) + dmaTag(px, f.sma50)));
+    if (f.sma200 != null) rows.push(row('200-DMA', money0(f.sma200) + dmaTag(px, f.sma200)));
+    if (!rows.length) return '';
+    return '<div class="fb-block"><div class="fb-head">Fundamentals' + (f.asOf ? ' <span class="fb-asof">as of ' + esc(fmtDate(f.asOf)) + '</span>' : '') + '</div>' + rows.join('') + '</div>';
+  }
+
   // Pull-to-refresh at the top of the page.
   function wirePull() {
     var hint = el('pullHint'); var startY = 0, pulling = false, dy = 0;
@@ -1510,6 +1570,7 @@
     render();
     scheduleAutoBackup();
     syncWatchlist();
+    fetchFundamentals();
   }
 
   // ---------- demo / backup ----------
@@ -1782,6 +1843,7 @@
     } else {
       setTimeout(syncWatchlist, 300); // watchlist prices even if holdings aren't refreshing
     }
+    setTimeout(fetchFundamentals, 600); // daily fundamentals (skips if already fetched today)
   }
 
   // public API
