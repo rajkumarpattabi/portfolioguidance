@@ -147,7 +147,7 @@ async function handleQuote(url, env) {
 }
 
 // Fundamentals cache schema version — bump to invalidate all cached entries after a parser/shape change.
-const FVER = 4;
+const FVER = 5;
 const SCR_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9'
@@ -206,8 +206,13 @@ async function processFund(sym, out, env, today) {
           const n = arr.length;
           return { now: arr[n - 1], qoq: n >= 2 ? round2(arr[n - 1] - arr[n - 2]) : null, yoy: n >= 5 ? round2(arr[n - 1] - arr[n - 5]) : null };
         };
-        f.shareholding = { promoter: packSh(shRow(sec, 'Promoters')), fii: packSh(shRow(sec, 'FIIs')), dii: packSh(shRow(sec, 'DIIs')) };
-        if (qs.length) f.shAsOf = qs[qs.length - 1];
+        const prom = packSh(shGet(sec, ['Promoters', 'Promoter']));
+        const fii = packSh(shGet(sec, ['FIIs', 'FII']));
+        const dii = packSh(shGet(sec, ['DIIs', 'DII']));
+        if (prom || fii || dii) {
+          f.shareholding = { promoter: prom, fii: fii, dii: dii };
+          if (qs.length) f.shAsOf = qs[qs.length - 1];
+        }
       }
       screenerOk = (f.pe != null || f.roce != null || !!f.shareholding);
     } catch (e) {}
@@ -285,10 +290,13 @@ function ratio(html, label) {
   return m ? numOf(m[1]) : null;
 }
 function numOf(s) { if (s == null) return null; const v = parseFloat(String(s).replace(/,/g, '')); return isFinite(v) ? v : null; }
-// --- Screener shareholding (quarterly table) parsers ---
+// --- Screener shareholding (quarterly table) parsers — tolerant of markup variation. ---
+const SH_LABELS = ['Promoters', 'Promoter', 'FIIs', 'FII', 'DIIs', 'DII', 'Government', 'Public', 'Others', 'No. of Shareholders', 'No. of'];
 function shSection(html) {
-  const i = html.indexOf('id="shareholding"');
-  return i < 0 ? '' : html.slice(i, i + 20000);   // covers the quarterly table (yearly table follows; we read the first/quarterly one)
+  let i = html.indexOf('id="shareholding"');
+  if (i < 0) i = html.indexOf('Shareholding Pattern');
+  if (i < 0) i = html.indexOf('>Shareholding<');
+  return i < 0 ? '' : html.slice(i, i + 40000);
 }
 function shQuarters(sec) {
   const thead = sec.match(/<thead[\s\S]*?<\/thead>/);
@@ -296,19 +304,21 @@ function shQuarters(sec) {
   const ths = thead[0].match(/<th[^>]*>([\s\S]*?)<\/th>/g) || [];
   return ths.map(t => t.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()).filter(Boolean);
 }
-function shRow(sec, label) {
-  const rows = sec.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  for (let r = 0; r < rows.length; r++) {
-    const text = rows[r].replace(/<[^>]*>/g, ' ');
-    if (new RegExp('(^|\\s)' + label + '(\\s|\\+|<)').test(text)) {
-      const cells = rows[r].match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
-      const nums = [];
-      cells.forEach(c => { const t = c.replace(/<[^>]*>/g, '').replace(/,/g, '').trim(); const v = parseFloat(t); if (isFinite(v)) nums.push(v); });
-      if (nums.length) return nums;
-    }
+// Percentages for a shareholding row: locate the label, take text up to the next known label,
+// strip tags, and collect numbers in 0–100. Works regardless of exact <tr>/<td> nesting.
+function shRowText(sec, label) {
+  let i = sec.indexOf('>' + label + '<');
+  if (i < 0) { const m = sec.search(new RegExp('>\\s*' + label.replace(/[.]/g, '\\.') + '\\b')); i = m; }
+  if (i < 0) i = sec.indexOf(label);
+  if (i < 0) return [];
+  let seg = sec.slice(i, i + 800);
+  for (const l of SH_LABELS) {
+    if (l !== label) { const j = seg.indexOf(l, label.length + 1); if (j > 0) seg = seg.slice(0, j); }
   }
-  return [];
+  const text = seg.replace(/<[^>]*>/g, ' ');
+  return (text.match(/-?\d+(?:\.\d+)?/g) || []).map(parseFloat).filter(v => isFinite(v) && v >= 0 && v <= 100);
 }
+function shGet(sec, labels) { for (const l of labels) { const a = shRowText(sec, l); if (a.length) return a; } return []; }
 // Two numbers after a label (e.g. "High / Low" → [high, low]).
 function ratio2(html, label) {
   let i = html.indexOf('>' + label + '<');
