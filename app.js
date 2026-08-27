@@ -10,8 +10,8 @@
   var CFG = window.PG_CONFIG || {};
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
-  var FUND_VER = 3;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v57';   // shown next to the header title; bump alongside the sw.js cache version
+  var FUND_VER = 4;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
+  var APP_VER = 'v58';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',

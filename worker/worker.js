@@ -147,7 +147,12 @@ async function handleQuote(url, env) {
 }
 
 // Fundamentals cache schema version — bump to invalidate all cached entries after a parser/shape change.
-const FVER = 3;
+const FVER = 4;
+const SCR_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9'
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Per-stock fundamentals: Yahoo (moving averages) + Screener (ratios, 52-wk, shareholding), cached daily in KV.
 async function handleFundamentals(url, env) {
@@ -158,10 +163,11 @@ async function handleFundamentals(url, env) {
   const today = utcDateStr();
   const out = {};
 
-  // Throttle: process in small batches so Screener isn't hit with a big parallel burst (which it rate-limits).
-  const BATCH = 4;
+  // Throttle: small batches + a pause between them so Screener isn't hit with a burst (it rate-limits).
+  const BATCH = 3;
   for (let i = 0; i < syms.length; i += BATCH) {
     await Promise.all(syms.slice(i, i + BATCH).map(sym => processFund(sym, out, env, today)));
+    if (i + BATCH < syms.length) await sleep(300);
   }
   return json({ fundamentals: out, syncedAt: Date.now(), ver: FVER });
 }
@@ -233,23 +239,36 @@ async function fetchYahooChart(sym) {
   return null;
 }
 
-// Screener company page HTML. Tries /consolidated/ then plain, with one retry each; validates it's a company page.
+// Screener company page HTML. Standalone URL first (has ratios + shareholding), then consolidated,
+// then a search-API slug resolve as a last resort (handles any symbol whose slug ≠ NSE ticker).
 async function fetchScreenerHtml(sym) {
   const es = encodeURIComponent(sym);
-  const urls = ['https://www.screener.in/company/' + es + '/consolidated/', 'https://www.screener.in/company/' + es + '/'];
-  for (const u of urls) {
-    for (let a = 0; a < 2; a++) {
-      try {
-        const s = await fetch(u, { headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-IN,en;q=0.9'
-        } });
-        if (s.ok) {
-          const html = await s.text();
-          if (html && (html.indexOf('Stock P/E') >= 0 || html.indexOf('id="shareholding"') >= 0)) return html;
-        }
-      } catch (e) {}
+  let h = await screenerGet('https://www.screener.in/company/' + es + '/');
+  if (h) return h;
+  h = await screenerGet('https://www.screener.in/company/' + es + '/consolidated/');
+  if (h) return h;
+  try {
+    const r = await fetch('https://www.screener.in/api/company/search/?q=' + es, { headers: SCR_HEADERS });
+    if (r.ok) {
+      const arr = await r.json();
+      if (Array.isArray(arr) && arr.length && arr[0] && arr[0].url) {
+        h = await screenerGet('https://www.screener.in' + arr[0].url);
+        if (h) return h;
+      }
     }
+  } catch (e) {}
+  return null;
+}
+async function screenerGet(u) {
+  for (let a = 0; a < 2; a++) {
+    try {
+      const s = await fetch(u, { headers: SCR_HEADERS });
+      if (s.ok) {
+        const html = await s.text();
+        if (html && (html.indexOf('Stock P/E') >= 0 || html.indexOf('id="shareholding"') >= 0)) return html;
+      }
+    } catch (e) {}
+    await sleep(250);
   }
   return null;
 }
