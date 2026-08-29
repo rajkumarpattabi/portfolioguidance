@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v59';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v60';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -412,6 +412,7 @@
             '</div>' +
           '</div>' +
           fundBlock(baseSymbol(h.symbol), h.ltp) +
+          insightsBlock(baseSymbol(h.symbol), h.ltp, sec) +
           '<div class="he-actions">' +
             '<button class="he-actbtn add" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'add\')">＋ Add / Average</button>' +
             '<button class="he-actbtn trim" type="button" onclick="event.stopPropagation();PG.openCalcMode(\'' + esc(h.symbol) + '\',\'trim\')">− Trim</button>' +
@@ -1552,6 +1553,76 @@
   }
   function fbInfo(btn) { var b = btn.closest('.fb-block'); if (!b) return; var n = b.querySelector('.fb-note'); if (n) n.hidden = !n.hidden; }
 
+  // ---- Insights (multi-metric, observational) ----
+  function sgn1(v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1); }
+  function insightsBlock(sym, px, sec) {
+    var f = state.funds[sym]; if (!f) return '';
+    var isBank = (sec === 'Finance' || sec === 'Insurance');
+    var isCyc = (sec === 'Metals & Mining' || sec === 'Automobiles');
+    var isETF = (sec === 'Gold' || /ETF$/.test(sym));
+    var items = [];
+
+    // 1) Institutional accumulation / distribution (FII + DII change), promoter as modifier
+    var sh = f.shareholding;
+    if (!isETF && sh && ((sh.fii && sh.fii.qoq != null) || (sh.dii && sh.dii.qoq != null))) {
+      var fq = (sh.fii && sh.fii.qoq != null) ? sh.fii.qoq : 0;
+      var dq = (sh.dii && sh.dii.qoq != null) ? sh.dii.qoq : 0;
+      var flow = fq + dq;
+      var fy = (sh.fii && sh.fii.yoy != null) ? sh.fii.yoy : 0;
+      var dy = (sh.dii && sh.dii.yoy != null) ? sh.dii.yoy : 0;
+      var flowY = fy + dy;
+      var cls = 'neutral', verb = 'Institutional holding steady';
+      if ((fq > 0.2 && dq < -0.2) || (fq < -0.2 && dq > 0.2)) { cls = 'neutral'; verb = 'Institutions rotating'; }
+      else if (flow > 0.2) { cls = 'up'; verb = 'Institutions accumulating'; }
+      else if (flow < -0.2) { cls = 'down'; verb = 'Institutions trimming'; }
+      var t = verb + ' — FII ' + sgn1(fq) + ', DII ' + sgn1(dq) + ' QoQ' + (Math.abs(flowY) > 0.05 ? ' (' + sgn1(flowY) + ' YoY)' : '');
+      var pm = (sh.promoter && sh.promoter.qoq != null) ? sh.promoter.qoq : null;
+      if (pm != null && pm <= -0.5) t += ' · promoter stake slipping';
+      else if (pm != null && pm >= 0.5) t += ' · promoter adding';
+      items.push({ cls: cls, text: t });
+    }
+
+    // 2) Quality-adjusted valuation: P/B vs ROE  (fair P/B ≈ ROE / 12% cost of equity)
+    if (!isETF && f.pb != null && f.roe != null && f.roe > 0) {
+      var fairPB = f.roe / 12, rich = fairPB > 0 ? f.pb / fairPB : null;
+      if (rich != null) {
+        var cls2 = 'neutral', verb2 = 'Fairly valued for its returns';
+        if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for its returns'; }
+        else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to its returns'; }
+        var t2 = verb2 + ' — ROE ' + n1(f.roe) + '% supports ~' + n1(fairPB) + '× book; trading at ' + n1(f.pb) + '×';
+        if (isCyc) t2 += ' · cyclical — P/B more reliable than PE';
+        items.push({ cls: cls2, text: t2 });
+      }
+    }
+
+    // 3) Trend posture: price vs 50/200-DMA + golden/death cross + 52-wk position
+    if (f.sma50 != null && f.sma200 != null && px != null) {
+      var a50 = px >= f.sma50, a200 = px >= f.sma200, golden = f.sma50 >= f.sma200;
+      var cls3 = 'neutral', verb3 = 'Transitioning';
+      if (a50 && a200 && golden) { cls3 = 'up'; verb3 = 'Uptrend'; }
+      else if (!a50 && !a200 && !golden) { cls3 = 'down'; verb3 = 'Downtrend'; }
+      var t3 = verb3 + ' — ' + (a200 ? 'above' : 'below') + ' 200-DMA, ' + (golden ? '50>200 (golden cross)' : '50<200 (death cross)');
+      if (f.wk52High != null && f.wk52Low != null && f.wk52High > f.wk52Low) {
+        var pos = (px - f.wk52Low) / (f.wk52High - f.wk52Low) * 100;
+        if (pos >= 85) t3 += ' · near 52-wk high'; else if (pos <= 15) t3 += ' · near 52-wk low';
+      }
+      items.push({ cls: cls3, text: t3 });
+    }
+
+    if (!items.length) return '';
+    var rows = items.map(function (it) {
+      return '<div class="ins-row ' + it.cls + '"><span class="ins-dot"></span><span class="ins-text">' + it.text + '</span></div>';
+    }).join('');
+    var note = '<div class="ins-note" hidden>' +
+      '<b>How these are read — observations, not advice:</b><br>' +
+      '<b>Ownership</b> — FII + DII stake change vs last quarter (and YoY). Up = institutions buying, down = trimming; a notable promoter change is flagged.<br>' +
+      '<b>Value for returns</b> — a higher ROE justifies a higher price-to-book. Fair ≈ ROE ÷ 12%. Well above that = premium; below = cheap for the returns it earns.<br>' +
+      '<b>Trend</b> — price vs its 50 &amp; 200-day averages, and whether the 50-day is above the 200-day (golden cross). Above both = uptrend.' +
+      '</div>';
+    return '<div class="ins-block"><div class="ins-head">Insights<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + rows + note + '</div>';
+  }
+  function insInfo(btn) { var b = btn.closest('.ins-block'); if (!b) return; var n = b.querySelector('.ins-note'); if (n) n.hidden = !n.hidden; }
+
   // Pull-to-refresh at the top of the page.
   function wirePull() {
     var hint = el('pullHint'); var startY = 0, pulling = false, dy = 0;
@@ -1878,7 +1949,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
-    fbInfo: fbInfo,
+    fbInfo: fbInfo, insInfo: insInfo,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
