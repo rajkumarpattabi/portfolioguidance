@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v66';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v67';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -379,11 +379,19 @@
     return head + '<div class="tg-chart">' + svg + '</div>' + xlab;
   }
 
-  // Merge two daily-history arrays by date (incoming wins on same day), sorted ascending.
+  // Merge two daily-history arrays by date, sorted ascending. On a same-date clash prefer a
+  // final (close) reading over a provisional one; if both equal in finality, the newer capture wins.
   function mergeHistory(cur, inc) {
     var m = {};
-    (cur || []).forEach(function (r) { if (r && r.d) m[r.d] = r; });
-    (inc || []).forEach(function (r) { if (r && r.d) m[r.d] = r; });
+    function put(r) {
+      if (!r || !r.d) return;
+      var e = m[r.d];
+      if (!e) { m[r.d] = r; return; }
+      var rf = !!r.final, ef = !!e.final;
+      if (rf && !ef) m[r.d] = r;
+      else if (rf === ef && (r.t || 0) >= (e.t || 0)) m[r.d] = r;
+    }
+    (cur || []).forEach(put); (inc || []).forEach(put);
     return Object.keys(m).sort().map(function (d) { return m[d]; });
   }
 
@@ -694,19 +702,39 @@
   }
 
   // ---------- daily portfolio history (for the trend graph) ----------
-  // Opportunistic capture: each real (Zerodha) refresh writes/overwrites TODAY's row
-  // with the latest totals. There is no server, so "today's value" = last seen today —
-  // a good stand-in for the close if the app is opened after market hours.
+  // Opportunistic capture: each real (Zerodha) refresh records one point per TRADING DATE.
+  // There is no server, so we approximate the session close from whatever reading we get:
+  //  - NSE hours (local/IST): open 9:15, close 15:30.
+  //  - A reading at/after 15:30 represents today's close (final).
+  //  - A reading before 9:15 represents the PREVIOUS session's close (final) — the market
+  //    hasn't reopened, so the value is still yesterday's close; it is attributed to yesterday.
+  //  - A reading during 9:15–15:30 is intraday/provisional for today.
+  // "Last reading wins" applies ONLY while the stored row is still provisional (its last
+  // reading was before 15:30). Once a row holds a final close reading it is locked, so a
+  // later same-date reading (e.g. next morning before open) will not overwrite it.
+  var MKT_OPEN = 9 * 60 + 15, MKT_CLOSE = 15 * 60 + 30;
   function captureSnapshot(source) {
     if (source !== 'zerodha') return;          // never record demo/imported previews
     if (!state.holdings.length) return;
     var t = totals();
     if (!(t.invested > 0)) return;             // guard against empty/zero totals
-    var d = todayStr();
-    var row = { d: d, v: r2(t.value), inv: r2(t.invested), pnl: r2(t.pnl), pnlPct: r2(t.pnlPct), day: r2(t.day) };
+    var now = new Date();
+    var hm = now.getHours() * 60 + now.getMinutes();
+    var dt = new Date(now);
+    if (hm < MKT_OPEN) dt.setDate(dt.getDate() - 1);       // before open → previous session's close
+    var d = todayStr(dt);
+    var isFinal = (hm >= MKT_CLOSE) || (hm < MKT_OPEN);    // captured while market for `d` is closed
+    var row = { d: d, v: r2(t.value), inv: r2(t.invested), pnl: r2(t.pnl), pnlPct: r2(t.pnlPct),
+                day: r2(t.day), t: now.getTime(), final: isFinal };
     var h = state.history || [];
-    if (h.length && h[h.length - 1].d === d) h[h.length - 1] = row;  // overwrite same-day
-    else h.push(row);
+    var idx = -1;
+    for (var i = h.length - 1; i >= 0; i--) { if (h[i].d === d) { idx = i; break; } }
+    if (idx === -1) {
+      h.push(row);
+      h.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : 0; });  // keep ascending
+    } else if (!h[idx].final) {
+      h[idx] = row;                            // provisional → last-reading-wins (may upgrade to final)
+    }                                          // else: existing final close is locked — leave it
     if (h.length > 800) h = h.slice(h.length - 800);                 // ~3 yrs cap
     state.history = h; save(K.history, h);
   }
@@ -2291,7 +2319,7 @@
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
-    toggleTrend: toggleTrend, setTrendRange: setTrendRange, trendTip: trendTip,
+    toggleTrend: toggleTrend, setTrendRange: setTrendRange, trendTip: trendTip, captureSnapshot: captureSnapshot,
     setCap: setCap, setActionMode: setActionMode,
     gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect
   };
