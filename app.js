@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v67';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v68';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -658,7 +658,7 @@
       '<button class="ghost-btn" type="button" onclick="PG.addWatch(document.getElementById(\'watchAddInput\').value)">Add</button>' +
     '</div>';
     if (!state.watchlist.length) {
-      wrap.innerHTML = add + '<div class="empty-note">No watchlist stocks yet. Add symbols you want to track, set a <strong>Buy</strong> target under <strong>Settings → Sectors &amp; zones</strong>, and they appear in the <strong>Action → Buy</strong> zone when the price reaches it.</div>';
+      wrap.innerHTML = add + '<div class="empty-note">No watchlist stocks yet. Add symbols you want to track, set a <strong>Buy</strong> target under <strong>Settings → Sectors &amp; zones</strong>, and they appear in the <strong>Insights → Buy</strong> zone when the price reaches it.</div>';
       return;
     }
     var rows = state.watchlist.slice().sort(function (a, b) { return a.symbol < b.symbol ? -1 : 1; }).map(function (w) {
@@ -1366,7 +1366,7 @@
   // ---- Insights view (all holdings, collapsible category tables, attention-first) ----
   function renderActionInsights(body, rows) {
     if (!rows || !rows.length) {
-      body.innerHTML = '<div class="empty-note">Insights appear once fundamentals are fetched (once a day). Open a stock or tap <strong>Refresh</strong>, then check back.</div>';
+      body.innerHTML = '<div class="empty-note">Signals appear once fundamentals are fetched (once a day). Open a stock or tap <strong>Refresh</strong>, then check back.</div>';
       return;
     }
     body.innerHTML = INS_CATS.map(function (c) {
@@ -1972,7 +1972,7 @@
       '<b>Valuation</b> — a higher ROE justifies a higher price-to-book. Fair ≈ ROE ÷ 12%. Well above = premium; below = cheap for the returns it earns.<br>' +
       '<b>Trend</b> — price vs its 50 &amp; 200-day averages, and whether the 50-day is above the 200-day (golden cross). Above both = uptrend.' +
       '</div>';
-    return '<div class="ins-block"><div class="ins-head">Insights<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + body + note + '</div>';
+    return '<div class="ins-block"><div class="ins-head">Signals<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + body + note + '</div>';
   }
   function insInfo(btn) { var b = btn.closest('.ins-block'); if (!b) return; var n = b.querySelector('.ins-note'); if (n) n.hidden = !n.hidden; }
 

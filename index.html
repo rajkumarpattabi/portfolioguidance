@@ -85,11 +85,11 @@
 
     <!-- ACTION -->
     <div class="view" id="v-action">
-      <h3 class="section-title">Action</h3>
+      <h3 class="section-title">Insights</h3>
       <div class="seg wide" id="actionMode">
         <button class="seg-btn active" data-amode="stock">Stock<span class="amode-cnt" id="amodeStockCnt" hidden></span></button>
         <button class="seg-btn" data-amode="sector">Sector<span class="amode-cnt" id="amodeSectorCnt" hidden></span></button>
-        <button class="seg-btn" data-amode="insights">Insights<span class="amode-cnt" id="amodeInsCnt" hidden></span></button>
+        <button class="seg-btn" data-amode="insights">Signals<span class="amode-cnt" id="amodeInsCnt" hidden></span></button>
       </div>
       <div id="actionBody"></div>
     </div>
@@ -177,7 +177,7 @@
         <button class="set-head" type="button" onclick="PG.toggleSet('zones')"><span>Sectors &amp; zones</span><span class="set-caret">▾</span></button>
         <div class="set-body">
           <div class="card">
-            <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Action</strong> tab.</div>
+            <div class="s-sub" style="margin-bottom:12px">Tap a sector to reassign it. Set <strong>Buy</strong> / <strong>Sell</strong> target prices (₹) — these drive the <strong>Insights</strong> tab.</div>
             <div id="sectorEditor"></div>
           </div>
         </div>
@@ -187,7 +187,7 @@
         <button class="set-head" type="button" onclick="PG.toggleSet('caps')"><span>Sector caps</span><span class="set-caret">▾</span></button>
         <div class="set-body">
           <div class="card">
-            <div class="s-sub" style="margin-bottom:12px">Set each sector's <strong>maximum</strong> weightage (on <strong>invested</strong> basis). Totals can't cross 100% — the last empty sector auto-fills with whatever is left. These drive the <strong>Sector</strong> view on the Action tab.</div>
+            <div class="s-sub" style="margin-bottom:12px">Set each sector's <strong>maximum</strong> weightage (on <strong>invested</strong> basis). Totals can't cross 100% — the last empty sector auto-fills with whatever is left. These drive the <strong>Sector</strong> view on the Insights tab.</div>
             <div id="capEditor"></div>
           </div>
         </div>
@@ -252,7 +252,7 @@
   <nav>
     <button class="active" data-v="dash" onclick="PG.setView('dash')"><span class="ni">◑</span>Dashboard<span class="navbadge" id="dashBadge" hidden></span></button>
     <button data-v="holdings" onclick="PG.setView('holdings')"><span class="ni">▤</span>Holdings</button>
-    <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Action<span class="navbadge" id="actionBadge" hidden></span></button>
+    <button data-v="action" onclick="PG.setView('action')"><span class="ni">⚑</span>Insights<span class="navbadge" id="actionBadge" hidden></span></button>
     <button data-v="settings" onclick="PG.setView('settings')"><span class="ni">⚙</span>Settings</button>
   </nav>
 </div>
