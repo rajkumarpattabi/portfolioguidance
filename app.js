@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v64';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v65';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -44,6 +44,7 @@
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
     insOpen: {},   // Action → Insights category collapse state (default open)
+    insRowOpen: {}, // Action → Insights Ownership per-stock expand state
     view: UI.view || 'dash',
     actionMode: UI.actionMode || 'stock',  // 'stock' | 'sector'
     holdView: UI.holdView || 'holdings',   // 'holdings' | 'watchlist'
@@ -1144,25 +1145,43 @@
   }
   // Holding cell (current %).
   function hCell(o, grp) { return '<td class="' + (grp ? 'grp' : '') + '">' + (o && o.now != null ? n1(o.now) + '%' : '—') + '</td>'; }
+  // Standout ownership move last quarter — the "what happened" one-liner (promoter change wins if notable).
+  function standoutMove(sh) {
+    if (!sh) return '';
+    var p = sh.promoter, f = sh.fii, di = sh.dii;
+    if (p && p.qoq != null && p.qoq <= -0.5) return 'promoter cut';
+    if (p && p.qoq != null && p.qoq >= 0.5) return 'promoter added';
+    var arr = [];
+    if (f && f.qoq != null) arr.push({ w: 'FII', v: f.qoq });
+    if (di && di.qoq != null) arr.push({ w: 'DII', v: di.qoq });
+    if (!arr.length) return '';
+    arr.sort(function (a, b) { return Math.abs(b.v) - Math.abs(a.v); });
+    var top = arr[0];
+    if (Math.abs(top.v) < 0.2) return 'holding steady';
+    return top.w + (top.v >= 0 ? ' adding' : ' exiting');
+  }
+  // Per-stock 3×4 ownership mini-table (rows Promoter/FII/DII, cols H · Y · Q).
+  function ownMini(sh) {
+    function hv(o) { return o && o.now != null ? n1(o.now) + '%' : '—'; }
+    function dv(o, k) { if (!o || o[k] == null) return '<td>—</td>'; var v = o[k]; return '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>'; }
+    function row(lbl, o) { return '<tr><td>' + lbl + '</td><td>' + hv(o) + '</td>' + dv(o, 'yoy') + dv(o, 'qoq') + '</tr>'; }
+    return '<table class="own-mini"><thead><tr><th>Owner</th><th>H</th><th>Y</th><th>Q</th></tr></thead><tbody>' +
+      row('Promoter', sh.promoter) + row('FII', sh.fii) + row('DII', sh.dii) + '</tbody></table>';
+  }
   function insTable(cat, g) {
-    // Ownership = wide table. Order: Stock · Verdict (both frozen) · Quarterly(P/F/D) · Yearly(P/F/D) · Holding(P/F/D).
+    // Ownership = expand-on-tap list: collapsed one-liner → tap → inline 3×4 mini-table.
     if (cat === 'Ownership') {
-      var head = '<thead>' +
-        '<tr><th rowspan="2" class="c-stock">Stock</th><th rowspan="2" class="c-verd">Verdict</th>' +
-          '<th colspan="3">Quarterly Δ</th><th colspan="3" class="grp">Yearly Δ</th><th colspan="3" class="grp">Holding</th></tr>' +
-        '<tr><th>P</th><th>F</th><th>D</th><th class="grp">P</th><th>F</th><th>D</th><th class="grp">P</th><th>F</th><th>D</th></tr></thead>';
-      var rowsO = g.map(function (r) {
-        var sh = (r.fields && r.fields.sh) || {}, p = sh.promoter, f = sh.fii, di = sh.dii;
-        return '<tr onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
-          '<td class="it-stock c-stock"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</td>' +
-          '<td class="c-verd"><span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span></td>' +
-          dCell(p, 'qoq') + dCell(f, 'qoq') + dCell(di, 'qoq') +
-          dCell(p, 'yoy', true) + dCell(f, 'yoy') + dCell(di, 'yoy') +
-          hCell(p, true) + hCell(f) + hCell(di) +
-        '</tr>';
+      return g.map(function (r) {
+        var sh = (r.fields && r.fields.sh) || {}, open = !!state.insRowOpen[r.sym];
+        var head = '<button class="own-head" type="button" onclick="PG.toggleInsRow(\'' + esc(r.sym) + '\')">' +
+          '<span class="own-sym"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</span>' +
+          '<span class="own-move">' + esc(standoutMove(sh)) + '</span>' +
+          '<span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span>' +
+          '<span class="own-caret">▾</span></button>';
+        var detail = '<div class="own-detail"' + (open ? '' : ' hidden') + '>' + ownMini(sh) +
+          '<button class="own-open" type="button" onclick="event.stopPropagation();PG.openStockDetail(\'' + esc(r.sym) + '\')">Open stock →</button></div>';
+        return '<div class="own-row ' + r.cls + (open ? ' open' : '') + '">' + head + detail + '</div>';
       }).join('');
-      return '<div class="ins-scroll"><table class="ins-tbl ins-own">' + head + '<tbody>' + rowsO + '</tbody></table>' +
-        '<div class="ins-legend">P Promoter · F FII · D DII · Δ = change (pp) · Holding = current %</div></div>';
     }
     var header = (cat === 'Valuation')
       ? '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>'
@@ -1182,6 +1201,7 @@
     return '<table class="ins-tbl"><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table>';
   }
   function toggleInsCat(c) { state.insOpen[c] = (state.insOpen[c] === false) ? true : false; renderAction(); }
+  function toggleInsRow(sym) { state.insRowOpen[sym] = !state.insRowOpen[sym]; renderAction(); }
   function openStockDetail(sym) {
     state.holdView = 'holdings'; state.holdExpanded = sym; saveUI();
     setView('holdings'); renderHoldings();
@@ -2046,7 +2066,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
-    fbInfo: fbInfo, insInfo: insInfo, openStockDetail: openStockDetail, toggleInsCat: toggleInsCat,
+    fbInfo: fbInfo, insInfo: insInfo, openStockDetail: openStockDetail, toggleInsCat: toggleInsCat, toggleInsRow: toggleInsRow,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
