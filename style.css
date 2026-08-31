@@ -27,11 +27,43 @@ header{position:sticky;top:0;z-index:20;background:linear-gradient(#12151c,#1215
 
 .summary{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px}
 .summary:empty{display:none}
+.summary.tappable{position:relative;cursor:pointer;border-radius:12px;padding:10px 10px 16px;margin-left:-6px;margin-right:-6px;
+  border:1px solid transparent;transition:border-color .15s,background .15s}
+.summary.tappable:active{background:var(--card)}
+.summary.open{border-color:#4da3ff40;background:var(--card)}
+.sm-caret{position:absolute;right:8px;bottom:4px;font-size:11px;color:var(--mut);transition:transform .2s}
+.summary.open .sm-caret{transform:rotate(180deg);color:var(--accent)}
 .sm-item{display:flex;flex-direction:column;gap:2px}
 .sm-k{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
 .sm-v{font-size:13.5px;font-weight:700}
 .sm-v em{font-style:normal;font-size:11px;font-weight:600;opacity:.85}
 .up{color:var(--up)} .down{color:var(--down)}
+
+/* portfolio trend graph */
+.trend-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 12px 10px;margin-top:10px}
+.trend-panel[hidden]{display:none}
+.tg-head{display:flex;align-items:center;justify-content:space-between;padding:0 2px 2px}
+.tg-ttl{font-size:13px;font-weight:800}
+.tg-pnl{display:flex;flex-direction:column;align-items:flex-end;border-radius:11px;padding:6px 12px;
+  background:linear-gradient(180deg,#123324,#0e2419);border:1px solid #2f7d55}
+.tg-pnl.down{background:linear-gradient(180deg,#331617,#241012);border-color:#7d3030}
+.tg-pnl .k{font-size:9px;letter-spacing:.4px;text-transform:uppercase;font-weight:700;color:#7fe0a8}
+.tg-pnl.down .k{color:#e6a3a3}
+.tg-pnl .v{font-size:16px;font-weight:800;line-height:1.05;color:var(--up)}
+.tg-pnl.down .v{color:var(--down)}
+.tg-pnl .p{font-size:10.5px;font-weight:700;color:#7fe0a8}
+.tg-pnl.down .p{color:#e6a3a3}
+.tg-legend{display:flex;gap:14px;padding:8px 4px 0;font-size:10.5px;color:var(--mut);font-weight:600}
+.tg-legend.sub{padding-top:3px}
+.tg-legend .al{margin-left:auto}
+.tg-legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.tg-chart{margin-top:4px}
+.tg-xlab{display:flex;justify-content:space-between;padding:2px 4px 0 46px;font-size:9.5px;color:var(--mut2);font-weight:600}
+.tg-seg{display:flex;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:3px;margin:10px 2px 4px}
+.tg-seg button{flex:1;background:none;border:none;color:var(--mut);font-size:11px;font-weight:700;padding:6px 0;border-radius:6px;cursor:pointer}
+.tg-seg button.on{background:#1d2637;color:var(--txt)}
+.tg-cap{font-size:10px;color:var(--mut2);text-align:center;margin-top:8px}
+.tg-empty{font-size:12px;color:var(--mut);line-height:1.55;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:14px;margin:6px 2px}
 
 /* main / views */
 main{flex:1;padding:16px}

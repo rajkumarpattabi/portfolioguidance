@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v65';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v66';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -26,7 +26,8 @@
     impactMeta: 'PG_IMPACTMETA',   // {shownDate, sinceDate, sig} — 1-day visibility bookkeeping
     customsectors: 'PG_CUSTOMSECTORS', // user-added sector names
     watchlist: 'PG_WATCHLIST',     // [{symbol, ltp, close}] — non-owned tracked stocks
-    funds: 'PG_FUNDS'              // {symbol: {asOf, price, pe, pb, ...}} — daily fundamentals cache
+    funds: 'PG_FUNDS',             // {symbol: {asOf, price, pe, pb, ...}} — daily fundamentals cache
+    history: 'PG_HISTORY'          // [{d:'YYYY-MM-DD', v, inv, pnl, pnlPct, day}] — daily portfolio totals
   };
 
   var UI = load(K.ui, {});
@@ -39,6 +40,7 @@
     customSectors: load(K.customsectors, []),  // user-added sector names
     watchlist: load(K.watchlist, []),      // [{symbol, ltp, close}] — never enters portfolio maths
     funds: load(K.funds, {}),              // {baseSymbol: {asOf, ...fundamentals}}
+    history: load(K.history, []),          // daily portfolio totals for the trend graph
     baseline: load(K.baseline, null),      // {date, source, holdings:[{symbol,qty,avg,ltp}]}
     impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
@@ -57,9 +59,12 @@
     calcSym: null,
     prevView: null,        // where to return when the calculator callout closes
     addDriver: null,
-    expanded: {}
+    expanded: {},
+    trendOpen: false,      // portfolio-trend panel under the summary ribbon (ephemeral)
+    trendRange: UI.trendRange || '1M', // 1M | 3M | 6M | ALL
+    trendTip: null         // {i} of the tapped action marker, or null
   };
-  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis, actionMode: state.actionMode, holdView: state.holdView }); }
+  function saveUI() { save(K.ui, { view: state.view, holdSort: state.holdSort, holdDir: state.holdDir, allocBasis: state.allocBasis, actionMode: state.actionMode, holdView: state.holdView, trendRange: state.trendRange }); }
 
   function load(k, dflt) {
     try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? dflt : v; }
@@ -190,14 +195,209 @@
   function renderSummary() {
     var t = totals();
     var bar = el('summaryBar');
-    if (!state.holdings.length) { bar.innerHTML = ''; return; }
+    if (!state.holdings.length) { bar.innerHTML = ''; bar.classList.remove('open', 'tappable'); if (el('trendPanel')) el('trendPanel').hidden = true; return; }
     var pnlCls = t.pnl >= 0 ? 'up' : 'down';
     var dayCls = t.day >= 0 ? 'up' : 'down';
     bar.innerHTML =
       '<div class="sm-item"><span class="sm-k">Value</span><span class="sm-v">' + money0(t.value) + '</span></div>' +
       '<div class="sm-item"><span class="sm-k">Invested</span><span class="sm-v">' + money0(t.invested) + '</span></div>' +
       '<div class="sm-item"><span class="sm-k">P&amp;L</span><span class="sm-v ' + pnlCls + '">' + signMoney0(t.pnl) + ' <em>[' + pct(t.pnlPct) + ']</em></span></div>' +
-      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney0(t.day) + ' <em>(' + pct(t.dayPct) + ')</em></span></div>';
+      '<div class="sm-item"><span class="sm-k">Day</span><span class="sm-v ' + dayCls + '">' + signMoney0(t.day) + ' <em>(' + pct(t.dayPct) + ')</em></span></div>' +
+      '<span class="sm-caret" aria-hidden="true">▾</span>';
+    bar.classList.add('tappable');
+    bar.classList.toggle('open', !!state.trendOpen);
+    renderTrend();
+  }
+
+  // ---------- portfolio trend graph ----------
+  function toggleTrend() {
+    if (!state.holdings.length) return;
+    state.trendOpen = !state.trendOpen;
+    state.trendTip = null;
+    el('summaryBar').classList.toggle('open', state.trendOpen);
+    renderTrend();
+  }
+  function setTrendRange(r) { state.trendRange = r; state.trendTip = null; saveUI(); renderTrend(); }
+  function trendTip(i) { state.trendTip = (state.trendTip === i ? null : i); renderTrend(); }
+
+  function trendWindow() {
+    var h = state.history || [];
+    var days = { '1M': 31, '3M': 93, '6M': 186, 'ALL': 1e9 }[state.trendRange] || 31;
+    if (state.trendRange === 'ALL' || h.length <= days) return h.slice();
+    return h.slice(h.length - days);
+  }
+
+  function renderTrend() {
+    var p = el('trendPanel'); if (!p) return;
+    if (!state.trendOpen || !state.holdings.length) { p.hidden = true; p.innerHTML = ''; return; }
+    p.hidden = false;
+    var data = trendWindow();
+    var ranges = ['1M', '3M', '6M', 'ALL'];
+    var seg = '<div class="tg-seg">' + ranges.map(function (r) {
+      return '<button type="button" class="' + (state.trendRange === r ? 'on' : '') + '" onclick="PG.setTrendRange(\'' + r + '\')">' + (r === 'ALL' ? 'All' : r) + '</button>';
+    }).join('') + '</div>';
+
+    if (data.length < 2) {
+      p.innerHTML =
+        '<div class="tg-head"><span class="tg-ttl">Portfolio trend</span></div>' +
+        '<div class="tg-empty">Collecting daily data — your trend appears here once there are at least two days on record. ' +
+        (data.length ? 'One day captured so far.' : 'Nothing captured yet.') + '</div>' + seg;
+      return;
+    }
+    p.innerHTML = trendChart(data) + seg +
+      '<div class="tg-cap">Captured once per day from your live totals · stored on device + in backup</div>';
+  }
+
+  // Build the inline SVG chart from a window of {d, v, inv} rows.
+  function trendChart(data) {
+    var n = data.length;
+    var vals = data.map(function (r) { return r.v; });
+    var invs = data.map(function (r) { return r.inv; });
+    var W = 372, H = 196, padL = 46, padR = 70, padT = 12, padB = 8;
+
+    // nice y-axis range: pad the data min/max, then round to a clean step
+    var lo0 = Math.min.apply(null, vals.concat(invs));
+    var hi0 = Math.max.apply(null, vals.concat(invs));
+    var pad = (hi0 - lo0) * 0.12 || Math.max(hi0 * 0.02, 1);
+    var lo = lo0 - pad, hi = hi0 + pad;
+    var step = niceStep((hi - lo) / 4);
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+
+    function X(i) { return padL + i * ((W - padR - padL) / (n - 1)); }
+    function Y(v) { return padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo)); }
+    function P(arr) { var d = ''; for (var i = 0; i < n; i++) d += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(arr[i]).toFixed(1); return d; }
+
+    var vL = vals[n - 1], iL = invs[n - 1], xL = X(n - 1), yV = Y(vL), yI = Y(iL), midY = (yV + yI) / 2;
+    var profit = vL >= iL, gap = vL - iL;
+
+    // between-curves polygon (value forward, invested back)
+    var area = 'M' + X(0).toFixed(1) + ' ' + Y(vals[0]).toFixed(1);
+    for (var i = 1; i < n; i++) area += 'L' + X(i).toFixed(1) + ' ' + Y(vals[i]).toFixed(1);
+    for (var j = n - 1; j >= 0; j--) area += 'L' + X(j).toFixed(1) + ' ' + Y(invs[j]).toFixed(1);
+    area += 'Z';
+    // clip split at the Invested curve: above=profit(green), below=loss(red)
+    var above = 'M' + padL + ' ' + padT + ' L' + (W - padR) + ' ' + padT;
+    for (var j2 = n - 1; j2 >= 0; j2--) above += 'L' + X(j2).toFixed(1) + ' ' + Y(invs[j2]).toFixed(1);
+    above += 'Z';
+    var below = 'M' + X(0).toFixed(1) + ' ' + Y(invs[0]).toFixed(1);
+    for (var i2 = 1; i2 < n; i2++) below += 'L' + X(i2).toFixed(1) + ' ' + Y(invs[i2]).toFixed(1);
+    below += 'L' + (W - padR) + ' ' + (H - padB) + ' L' + padL + ' ' + (H - padB) + 'Z';
+
+    var grid = '';
+    for (var g = lo; g <= hi + 1; g += step) {
+      var y = Y(g);
+      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#1c2332" stroke-width="1"/>';
+      grid += '<text x="' + (padL - 8) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#5f6b7e" font-weight="600">' + lakhLbl(g) + '</text>';
+    }
+
+    // action markers where invested changed day-over-day (net per stored day)
+    var minMove = Math.max(iL * 0.001, 500);
+    var marks = '';
+    for (var k = 1; k < n; k++) {
+      var dlt = invs[k] - invs[k - 1];
+      if (Math.abs(dlt) < minMove) continue;
+      var mx = X(k), my = Y(invs[k]);
+      var tri = dlt > 0
+        ? 'M' + mx.toFixed(1) + ' ' + (my - 5).toFixed(1) + ' L' + (mx - 4.3).toFixed(1) + ' ' + (my + 3.5).toFixed(1) + ' L' + (mx + 4.3).toFixed(1) + ' ' + (my + 3.5).toFixed(1) + ' Z'
+        : 'M' + mx.toFixed(1) + ' ' + (my + 5).toFixed(1) + ' L' + (mx - 4.3).toFixed(1) + ' ' + (my - 3.5).toFixed(1) + ' L' + (mx + 4.3).toFixed(1) + ' ' + (my - 3.5).toFixed(1) + ' Z';
+      marks += '<path d="' + tri + '" fill="#ffcf8f" stroke="#0a0e14" stroke-width="1"/>';
+      marks += '<circle cx="' + mx.toFixed(1) + '" cy="' + my.toFixed(1) + '" r="9" fill="transparent" style="cursor:pointer" onclick="PG.trendTip(' + k + ')"/>';
+    }
+
+    var brC = profit ? '#34c789' : '#f26d6d';
+    var pillFill = profit ? '#123324' : '#331617', pillStroke = profit ? '#2f7d55' : '#7d3030';
+    var gapTxt = (gap >= 0 ? '+' : '−') + inr0.format(Math.abs(Math.round(gap)));
+
+    // optional tooltip for a tapped action marker
+    var tip = '';
+    var ti = state.trendTip;
+    if (ti != null && ti > 0 && ti < n) {
+      var dd = invs[ti] - invs[ti - 1];
+      if (Math.abs(dd) >= minMove) {
+        var tx = Math.min(Math.max(X(ti), padL + 40), W - padR - 40), ty = Y(invs[ti]) - 16;
+        var lbl = (dd > 0 ? 'Added ' : 'Reduced ') + '₹' + inr0.format(Math.abs(Math.round(dd)));
+        tip = '<g transform="translate(' + tx.toFixed(1) + ',' + ty.toFixed(1) + ')">' +
+          '<rect x="-52" y="-20" width="104" height="30" rx="6" fill="#0e1420" stroke="#2e3a4e" stroke-width="1"/>' +
+          '<text x="0" y="-7" text-anchor="middle" font-size="9.5" font-weight="700" fill="#ffcf8f">' + esc(lbl) + '</text>' +
+          '<text x="0" y="5" text-anchor="middle" font-size="8.5" fill="#8b97ab">' + esc(fmtDate(data[ti].d)) + '</text>' +
+          '</g>';
+      }
+    }
+
+    var pnlPct = iL ? gap / iL * 100 : 0;
+    var head =
+      '<div class="tg-head">' +
+        '<span class="tg-ttl">Portfolio trend</span>' +
+        '<span class="tg-pnl ' + (profit ? 'up' : 'down') + '">' +
+          '<span class="k">Profit (Value − Invested)</span>' +
+          '<span class="v">' + signMoney0(gap) + '</span>' +
+          '<span class="p">' + pct(pnlPct) + '</span>' +
+        '</span>' +
+      '</div>' +
+      '<div class="tg-legend">' +
+        '<span><i style="background:#4da3ff"></i>Value</span>' +
+        '<span><i style="background:#ffcf8f"></i>Invested</span>' +
+        '<span class="al"><i style="background:linear-gradient(90deg,#34c789,#f26d6d)"></i>area: profit / loss</span>' +
+      '</div>' +
+      '<div class="tg-legend sub">' +
+        '<span style="color:#ffcf8f">▲ you added</span>' +
+        '<span style="color:#ffcf8f">▼ you reduced</span>' +
+        '<span class="al" style="color:#5f6b7e">tap a marker for date &amp; amount</span>' +
+      '</div>';
+
+    // x labels: first, ~middle, last
+    var xi = [0, Math.round((n - 1) / 2), n - 1];
+    var xlab = '<div class="tg-xlab"><span>' + fmtDate(data[xi[0]].d) + '</span><span>' + fmtDate(data[xi[1]].d) + '</span><span>' + fmtDate(data[xi[2]].d) + '</span></div>';
+
+    var svg =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+      '<defs>' +
+      '<linearGradient id="tgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34c789" stop-opacity="0.44"/><stop offset="1" stop-color="#34c789" stop-opacity="0.05"/></linearGradient>' +
+      '<linearGradient id="tgR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f26d6d" stop-opacity="0.06"/><stop offset="1" stop-color="#f26d6d" stop-opacity="0.42"/></linearGradient>' +
+      '<clipPath id="tgA"><path d="' + above + '"/></clipPath>' +
+      '<clipPath id="tgB"><path d="' + below + '"/></clipPath>' +
+      '<filter id="tgGlow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+      '</defs>' +
+      grid +
+      '<g clip-path="url(#tgA)"><path d="' + area + '" fill="url(#tgG)"/></g>' +
+      '<g clip-path="url(#tgB)"><path d="' + area + '" fill="url(#tgR)"/></g>' +
+      '<path d="' + P(invs) + '" fill="none" stroke="#ffcf8f" stroke-width="2.1" stroke-linejoin="round" opacity="0.95"/>' +
+      '<path d="' + P(vals) + '" fill="none" stroke="#4da3ff" stroke-width="2.6" stroke-linejoin="round" filter="url(#tgGlow)"/>' +
+      marks +
+      '<circle cx="' + xL.toFixed(1) + '" cy="' + yI.toFixed(1) + '" r="3" fill="#ffcf8f" stroke="#0a0e14" stroke-width="1.5"/>' +
+      '<circle cx="' + xL.toFixed(1) + '" cy="' + yV.toFixed(1) + '" r="4" fill="#4da3ff" stroke="#0a0e14" stroke-width="2"/>' +
+      '<line x1="' + (xL + 6).toFixed(1) + '" y1="' + yV.toFixed(1) + '" x2="' + (xL + 6).toFixed(1) + '" y2="' + yI.toFixed(1) + '" stroke="' + brC + '" stroke-width="1.6"/>' +
+      '<line x1="' + (xL + 2).toFixed(1) + '" y1="' + yV.toFixed(1) + '" x2="' + (xL + 6).toFixed(1) + '" y2="' + yV.toFixed(1) + '" stroke="' + brC + '" stroke-width="1.6"/>' +
+      '<line x1="' + (xL + 2).toFixed(1) + '" y1="' + yI.toFixed(1) + '" x2="' + (xL + 6).toFixed(1) + '" y2="' + yI.toFixed(1) + '" stroke="' + brC + '" stroke-width="1.6"/>' +
+      '<g transform="translate(' + (xL + 10).toFixed(1) + ',' + midY.toFixed(1) + ')">' +
+        '<rect x="0" y="-11" width="62" height="22" rx="6" fill="' + pillFill + '" stroke="' + pillStroke + '" stroke-width="1"/>' +
+        '<text x="31" y="4" text-anchor="middle" font-size="10.5" font-weight="800" fill="' + brC + '">' + gapTxt + '</text>' +
+      '</g>' +
+      tip +
+      '</svg>';
+
+    return head + '<div class="tg-chart">' + svg + '</div>' + xlab;
+  }
+
+  // Merge two daily-history arrays by date (incoming wins on same day), sorted ascending.
+  function mergeHistory(cur, inc) {
+    var m = {};
+    (cur || []).forEach(function (r) { if (r && r.d) m[r.d] = r; });
+    (inc || []).forEach(function (r) { if (r && r.d) m[r.d] = r; });
+    return Object.keys(m).sort().map(function (d) { return m[d]; });
+  }
+
+  function niceStep(raw) {
+    if (!(raw > 0)) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    var f = raw / mag;
+    var nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    return nf * mag;
+  }
+  function lakhLbl(v) {
+    if (Math.abs(v) >= 1e7) return '₹' + (v / 1e7).toFixed(2) + 'Cr';
+    if (Math.abs(v) >= 1e5) return '₹' + (v / 1e5).toFixed(2) + 'L';
+    return '₹' + inr0.format(Math.round(v));
   }
 
   function renderDash() {
@@ -491,6 +691,24 @@
     ['calcQty', 'calcAvg'].forEach(function (id) { var e = el(id); if (e) e.value = ''; });
     if (w && w.ltp) { el('calcLtp').value = r2(w.ltp); el('buyPrice').value = r2(w.ltp); }
     calc();
+  }
+
+  // ---------- daily portfolio history (for the trend graph) ----------
+  // Opportunistic capture: each real (Zerodha) refresh writes/overwrites TODAY's row
+  // with the latest totals. There is no server, so "today's value" = last seen today —
+  // a good stand-in for the close if the app is opened after market hours.
+  function captureSnapshot(source) {
+    if (source !== 'zerodha') return;          // never record demo/imported previews
+    if (!state.holdings.length) return;
+    var t = totals();
+    if (!(t.invested > 0)) return;             // guard against empty/zero totals
+    var d = todayStr();
+    var row = { d: d, v: r2(t.value), inv: r2(t.invested), pnl: r2(t.pnl), pnlPct: r2(t.pnlPct), day: r2(t.day) };
+    var h = state.history || [];
+    if (h.length && h[h.length - 1].d === d) h[h.length - 1] = row;  // overwrite same-day
+    else h.push(row);
+    if (h.length > 800) h = h.slice(h.length - 800);                 // ~3 yrs cap
+    state.history = h; save(K.history, h);
   }
 
   // ---------- Impact (effect of holdings changes since a baseline) ----------
@@ -1779,6 +1997,7 @@
     }).filter(function (h) { return h.symbol && h.qty > 0; });
     state.meta = { lastSync: Date.now(), source: source };
     save(K.holdings, state.holdings); save(K.meta, state.meta);
+    captureSnapshot(source);
     refreshImpact();
     render();
     scheduleAutoBackup();
@@ -1805,10 +2024,10 @@
   }
 
   function backupPayload() {
-    return { app: 'PortfolioGuidance', version: 7, exportedAt: new Date().toISOString(),
+    return { app: 'PortfolioGuidance', version: 8, exportedAt: new Date().toISOString(),
       holdings: state.holdings, overrides: state.overrides, zones: state.zones,
       secthresh: state.secthresh, customSectors: state.customSectors, watchlist: state.watchlist,
-      baseline: state.baseline, impactMeta: state.impactMeta,
+      baseline: state.baseline, impactMeta: state.impactMeta, history: state.history,
       ui: load(K.ui, {}), meta: state.meta };
   }
   function applyBackup(j) {
@@ -1818,6 +2037,7 @@
     if (j.secthresh) { state.secthresh = j.secthresh; save(K.secthresh, state.secthresh); }
     if (j.customSectors) { state.customSectors = j.customSectors; save(K.customsectors, state.customSectors); }
     if (j.watchlist) { state.watchlist = j.watchlist; save(K.watchlist, state.watchlist); }
+    if (j.history) { state.history = mergeHistory(state.history, j.history); save(K.history, state.history); }
     if (j.meta) { state.meta = j.meta; save(K.meta, state.meta); }
     // Carry the impact baseline across devices if present; else seed fresh from restored holdings.
     state.baseline = j.baseline || null; save(K.baseline, state.baseline);
@@ -2071,6 +2291,7 @@
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
     saveAppKey: saveAppKey, exportJson: exportJson, exportCsv: exportCsv, setZone: setZone, toggleSub: toggleSub, toggleSet: toggleSet, openCalc: openCalc, setAllocBasis: setAllocBasis,
+    toggleTrend: toggleTrend, setTrendRange: setTrendRange, trendTip: trendTip,
     setCap: setCap, setActionMode: setActionMode,
     gConnect: gConnect, gBackup: gBackup, gRestore: gRestore, gDisconnect: gDisconnect
   };
