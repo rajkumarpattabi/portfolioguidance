@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v60';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v61';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -1098,18 +1098,49 @@
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
     updateActionToggle();
-    if (!state.holdings.length) { setActionBadge(0); setActionToggleCounts(0, 0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
-    var sz = computeStockZones(), sc = computeSectorCaps();
+    if (!state.holdings.length) { setActionBadge(0); setActionToggleCounts(0, 0, 0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
+    var sz = computeStockZones(), sc = computeSectorCaps(), ins = computeInsightsAll();
+    var insAtt = ins.filter(function (r) { return r.cls === 'down'; }).length;
     setActionBadge(sz.anyBuy + sz.anySell + sc.overCount);
-    setActionToggleCounts(sz.anyBuy + sz.anySell, sc.overCount);
+    setActionToggleCounts(sz.anyBuy + sz.anySell, sc.overCount, insAtt);
     if (state.actionMode === 'sector') renderActionSector(body, sc);
+    else if (state.actionMode === 'insights') renderActionInsights(body, ins);
     else renderActionStock(body, sz);
   }
 
-  function setActionToggleCounts(stock, sector) {
-    var s = el('amodeStockCnt'), c = el('amodeSectorCnt');
+  function setActionToggleCounts(stock, sector, insights) {
+    var s = el('amodeStockCnt'), c = el('amodeSectorCnt'), n = el('amodeInsCnt');
     if (s) { s.textContent = stock; s.hidden = !stock; }
     if (c) { c.textContent = sector; c.hidden = !sector; }
+    if (n) { n.textContent = insights; n.hidden = !insights; }   // count = "watch" (unfavourable) items
+  }
+
+  // ---- Insights view (all holdings, grouped by category, attention-first) ----
+  function renderActionInsights(body, rows) {
+    if (!rows || !rows.length) {
+      body.innerHTML = '<div class="empty-note">Insights appear once fundamentals are fetched (once a day). Open a stock or tap <strong>Refresh</strong>, then check back.</div>';
+      return;
+    }
+    body.innerHTML = INS_CATS.map(function (c) {
+      var g = rows.filter(function (r) { return r.cat === c; }); if (!g.length) return '';
+      g.sort(insSort);
+      var att = g.filter(function (r) { return r.cls === 'down'; }).length;
+      var rowsHtml = g.map(function (r) {
+        return '<div class="insv-row ' + r.cls + '" onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
+          '<div class="insv-top"><span class="az-sym">' + esc(r.sym) + '</span>' +
+            '<span class="ins-tag ' + r.cls + '">' + r.verb + '</span>' +
+            '<span class="az-sec" style="color:' + sectorColor(r.sec) + '">' + esc(r.sec) + '</span></div>' +
+          '<div class="insv-detail">' + r.detail + '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="az-zone"><div class="az-zonehead">' + c + ' <span class="az-zcnt">' + g.length + '</span>' +
+        (att ? '<span class="insv-att">' + att + ' watch</span>' : '') + '</div><div class="az-body">' + rowsHtml + '</div></div>';
+    }).join('');
+  }
+  function openStockDetail(sym) {
+    state.holdView = 'holdings'; state.holdExpanded = sym; saveUI();
+    setView('holdings'); renderHoldings();
+    setTimeout(function () { var e = document.querySelector('.hold-exp'); if (e && e.scrollIntoView) e.scrollIntoView({ block: 'center' }); }, 60);
   }
 
   function updateActionToggle() {
@@ -1554,74 +1585,93 @@
   function fbInfo(btn) { var b = btn.closest('.fb-block'); if (!b) return; var n = b.querySelector('.fb-note'); if (n) n.hidden = !n.hidden; }
 
   // ---- Insights (multi-metric, observational) ----
+  var INS_CATS = ['Ownership', 'Valuation', 'Trend'];
   function sgn1(v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1); }
-  function insightsBlock(sym, px, sec) {
-    var f = state.funds[sym]; if (!f) return '';
-    var isBank = (sec === 'Finance' || sec === 'Insurance');
+  function insRank(cls) { return cls === 'down' ? 0 : cls === 'neutral' ? 1 : 2; }   // attention-first
+  function insSort(a, b) { var r = insRank(a.cls) - insRank(b.cls); return r || ((b.mag || 0) - (a.mag || 0)); }
+
+  // Structured insights for one stock → [{cat, cls, verb, detail, mag}].
+  function computeInsights(sym, px, sec) {
+    var f = state.funds[sym]; if (!f) return [];
     var isCyc = (sec === 'Metals & Mining' || sec === 'Automobiles');
     var isETF = (sec === 'Gold' || /ETF$/.test(sym));
-    var items = [];
+    var out = [];
 
-    // 1) Institutional accumulation / distribution (FII + DII change), promoter as modifier
+    // Ownership — FII + DII change, promoter modifier
     var sh = f.shareholding;
     if (!isETF && sh && ((sh.fii && sh.fii.qoq != null) || (sh.dii && sh.dii.qoq != null))) {
-      var fq = (sh.fii && sh.fii.qoq != null) ? sh.fii.qoq : 0;
-      var dq = (sh.dii && sh.dii.qoq != null) ? sh.dii.qoq : 0;
-      var flow = fq + dq;
-      var fy = (sh.fii && sh.fii.yoy != null) ? sh.fii.yoy : 0;
-      var dy = (sh.dii && sh.dii.yoy != null) ? sh.dii.yoy : 0;
-      var flowY = fy + dy;
-      var cls = 'neutral', verb = 'Institutional holding steady';
-      if ((fq > 0.2 && dq < -0.2) || (fq < -0.2 && dq > 0.2)) { cls = 'neutral'; verb = 'Institutions rotating'; }
-      else if (flow > 0.2) { cls = 'up'; verb = 'Institutions accumulating'; }
-      else if (flow < -0.2) { cls = 'down'; verb = 'Institutions trimming'; }
-      var t = verb + ' — FII ' + sgn1(fq) + ', DII ' + sgn1(dq) + ' QoQ' + (Math.abs(flowY) > 0.05 ? ' (' + sgn1(flowY) + ' YoY)' : '');
+      var fq = (sh.fii && sh.fii.qoq != null) ? sh.fii.qoq : 0, dq = (sh.dii && sh.dii.qoq != null) ? sh.dii.qoq : 0, flow = fq + dq;
+      var fy = (sh.fii && sh.fii.yoy != null) ? sh.fii.yoy : 0, dy = (sh.dii && sh.dii.yoy != null) ? sh.dii.yoy : 0, flowY = fy + dy;
+      var cls = 'neutral', verb = 'Steady';
+      if ((fq > 0.2 && dq < -0.2) || (fq < -0.2 && dq > 0.2)) { cls = 'neutral'; verb = 'Rotating'; }
+      else if (flow > 0.2) { cls = 'up'; verb = 'Accumulating'; }
+      else if (flow < -0.2) { cls = 'down'; verb = 'Trimming'; }
+      var d = 'FII ' + sgn1(fq) + ', DII ' + sgn1(dq) + ' QoQ' + (Math.abs(flowY) > 0.05 ? ' (' + sgn1(flowY) + ' YoY)' : '');
       var pm = (sh.promoter && sh.promoter.qoq != null) ? sh.promoter.qoq : null;
-      if (pm != null && pm <= -0.5) t += ' · promoter stake slipping';
-      else if (pm != null && pm >= 0.5) t += ' · promoter adding';
-      items.push({ cls: cls, text: t });
+      if (pm != null && pm <= -0.5) { d += ' · promoter slipping'; if (cls === 'up') cls = 'neutral'; }
+      else if (pm != null && pm >= 0.5) d += ' · promoter adding';
+      out.push({ cat: 'Ownership', cls: cls, verb: verb, detail: d, mag: Math.abs(flow) });
     }
 
-    // 2) Quality-adjusted valuation: P/B vs ROE  (fair P/B ≈ ROE / 12% cost of equity)
+    // Valuation — P/B vs ROE (fair P/B ≈ ROE / 12)
     if (!isETF && f.pb != null && f.roe != null && f.roe > 0) {
       var fairPB = f.roe / 12, rich = fairPB > 0 ? f.pb / fairPB : null;
       if (rich != null) {
-        var cls2 = 'neutral', verb2 = 'Fairly valued for its returns';
-        if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for its returns'; }
-        else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to its returns'; }
-        var t2 = verb2 + ' — ROE ' + n1(f.roe) + '% supports ~' + n1(fairPB) + '× book; trading at ' + n1(f.pb) + '×';
-        if (isCyc) t2 += ' · cyclical — P/B more reliable than PE';
-        items.push({ cls: cls2, text: t2 });
+        var cls2 = 'neutral', verb2 = 'Fairly valued';
+        if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for returns'; }
+        else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to returns'; }
+        var d2 = 'ROE ' + n1(f.roe) + '% ⇒ ~' + n1(fairPB) + '× book; at ' + n1(f.pb) + '×' + (isCyc ? ' · cyclical' : '');
+        out.push({ cat: 'Valuation', cls: cls2, verb: verb2, detail: d2, mag: Math.abs(rich - 1) });
       }
     }
 
-    // 3) Trend posture: price vs 50/200-DMA + golden/death cross + 52-wk position
+    // Trend — price vs 50/200-DMA + golden/death cross + 52-wk position
     if (f.sma50 != null && f.sma200 != null && px != null) {
       var a50 = px >= f.sma50, a200 = px >= f.sma200, golden = f.sma50 >= f.sma200;
       var cls3 = 'neutral', verb3 = 'Transitioning';
       if (a50 && a200 && golden) { cls3 = 'up'; verb3 = 'Uptrend'; }
       else if (!a50 && !a200 && !golden) { cls3 = 'down'; verb3 = 'Downtrend'; }
-      var t3 = verb3 + ' — ' + (a200 ? 'above' : 'below') + ' 200-DMA, ' + (golden ? '50>200 (golden cross)' : '50<200 (death cross)');
+      var d3 = (a200 ? 'above' : 'below') + ' 200-DMA, ' + (golden ? 'golden cross' : 'death cross');
+      var mag = f.sma200 ? Math.abs((px - f.sma200) / f.sma200 * 100) : 0;
       if (f.wk52High != null && f.wk52Low != null && f.wk52High > f.wk52Low) {
         var pos = (px - f.wk52Low) / (f.wk52High - f.wk52Low) * 100;
-        if (pos >= 85) t3 += ' · near 52-wk high'; else if (pos <= 15) t3 += ' · near 52-wk low';
+        if (pos >= 85) d3 += ' · near 52-wk high'; else if (pos <= 15) d3 += ' · near 52-wk low';
       }
-      items.push({ cls: cls3, text: t3 });
+      out.push({ cat: 'Trend', cls: cls3, verb: verb3, detail: d3, mag: mag });
     }
+    return out;
+  }
 
+  // Per-stock Insights block, grouped by category (attention-first within each).
+  function insightsBlock(sym, px, sec) {
+    var items = computeInsights(sym, px, sec);
     if (!items.length) return '';
-    var rows = items.map(function (it) {
-      return '<div class="ins-row ' + it.cls + '"><span class="ins-dot"></span><span class="ins-text">' + it.text + '</span></div>';
+    var body = INS_CATS.map(function (c) {
+      var g = items.filter(function (i) { return i.cat === c; }); if (!g.length) return '';
+      g.sort(insSort);
+      return '<div class="ins-cat-head">' + c + '</div>' + g.map(function (it) {
+        return '<div class="ins-row ' + it.cls + '"><span class="ins-dot"></span><span class="ins-text"><b>' + it.verb + '</b> — ' + it.detail + '</span></div>';
+      }).join('');
     }).join('');
     var note = '<div class="ins-note" hidden>' +
       '<b>How these are read — observations, not advice:</b><br>' +
       '<b>Ownership</b> — FII + DII stake change vs last quarter (and YoY). Up = institutions buying, down = trimming; a notable promoter change is flagged.<br>' +
-      '<b>Value for returns</b> — a higher ROE justifies a higher price-to-book. Fair ≈ ROE ÷ 12%. Well above that = premium; below = cheap for the returns it earns.<br>' +
+      '<b>Valuation</b> — a higher ROE justifies a higher price-to-book. Fair ≈ ROE ÷ 12%. Well above = premium; below = cheap for the returns it earns.<br>' +
       '<b>Trend</b> — price vs its 50 &amp; 200-day averages, and whether the 50-day is above the 200-day (golden cross). Above both = uptrend.' +
       '</div>';
-    return '<div class="ins-block"><div class="ins-head">Insights<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + rows + note + '</div>';
+    return '<div class="ins-block"><div class="ins-head">Insights<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + body + note + '</div>';
   }
   function insInfo(btn) { var b = btn.closest('.ins-block'); if (!b) return; var n = b.querySelector('.ins-note'); if (n) n.hidden = !n.hidden; }
+
+  // Insights across all holdings, for the Action → Insights view.
+  function computeInsightsAll() {
+    var rows = [];
+    state.holdings.forEach(function (h) {
+      var bs = baseSymbol(h.symbol), sec = sectorOf(h.symbol);
+      computeInsights(bs, h.ltp, sec).forEach(function (it) { rows.push({ sym: h.symbol, sec: sec, cat: it.cat, cls: it.cls, verb: it.verb, detail: it.detail, mag: it.mag }); });
+    });
+    return rows;
+  }
 
   // Pull-to-refresh at the top of the page.
   function wirePull() {
@@ -1949,7 +1999,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
-    fbInfo: fbInfo, insInfo: insInfo,
+    fbInfo: fbInfo, insInfo: insInfo, openStockDetail: openStockDetail,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
