@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v62';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v63';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -1136,17 +1136,35 @@
         '<div class="ins-cat-body"' + (open ? '' : ' hidden') + '>' + insTable(c, g) + '</div></div>';
     }).join('');
   }
-  function numTd(v) { v = v || 0; return '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>'; }
+  function deltaTd(v, grp) { return '<td class="' + (grp ? 'grp ' : '') + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>'; }
+  // Holding / QoQ / YoY triplet for one owner class (Promoter/FII/DII).
+  function shTriplet(o, grp) {
+    var H = '<td class="' + (grp ? 'grp' : '') + '">' + (o && o.now != null ? n1(o.now) + '%' : '—') + '</td>';
+    var Q = (o && o.qoq != null) ? deltaTd(o.qoq) : '<td>—</td>';
+    var Y = (o && o.yoy != null) ? deltaTd(o.yoy) : '<td>—</td>';
+    return H + Q + Y;
+  }
   function insTable(cat, g) {
-    var header;
-    if (cat === 'Ownership') header = '<th>Stock</th><th>Verdict</th><th>FII</th><th>DII</th>';
-    else if (cat === 'Valuation') header = '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>';
-    else header = '<th>Stock</th><th>Verdict</th><th>vs 200D</th><th>Cross</th>';
+    // Ownership = wide 9-field table (Promoter/FII/DII × H,Q,Y) → grouped header + horizontal scroll.
+    if (cat === 'Ownership') {
+      var head = '<thead>' +
+        '<tr><th rowspan="2">Stock</th><th colspan="3">Promoter</th><th colspan="3" class="grp">FII</th><th colspan="3" class="grp">DII</th><th rowspan="2" class="grp">Verdict</th></tr>' +
+        '<tr><th>H</th><th>Q</th><th>Y</th><th class="grp">H</th><th>Q</th><th>Y</th><th class="grp">H</th><th>Q</th><th>Y</th></tr></thead>';
+      var rowsO = g.map(function (r) {
+        var sh = (r.fields && r.fields.sh) || {};
+        return '<tr onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
+          '<td class="it-stock"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</td>' +
+          shTriplet(sh.promoter, false) + shTriplet(sh.fii, true) + shTriplet(sh.dii, true) +
+          '<td class="grp"><span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span></td></tr>';
+      }).join('');
+      return '<div class="ins-scroll"><table class="ins-tbl ins-own">' + head + '<tbody>' + rowsO + '</tbody></table></div>';
+    }
+    var header = (cat === 'Valuation')
+      ? '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>'
+      : '<th>Stock</th><th>Verdict</th><th>vs 200D</th><th>Cross</th>';
     var body = g.map(function (r) {
-      var fx = r.fields || {};
-      var cells;
-      if (cat === 'Ownership') cells = numTd(fx.fii) + numTd(fx.dii);
-      else if (cat === 'Valuation') cells = '<td>' + n1(fx.roe) + '%</td><td>' + n1(fx.pb) + '× / ' + n1(fx.fairPB) + '×</td>';
+      var fx = r.fields || {}, cells;
+      if (cat === 'Valuation') cells = '<td>' + n1(fx.roe) + '%</td><td>' + n1(fx.pb) + '× / ' + n1(fx.fairPB) + '×</td>';
       else {
         var v = fx.vs200 || 0;
         cells = '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + '%</td>' +
@@ -1632,7 +1650,7 @@
       var pm = (sh.promoter && sh.promoter.qoq != null) ? sh.promoter.qoq : null;
       if (pm != null && pm <= -0.5) { d += ' · promoter slipping'; if (cls === 'up') cls = 'neutral'; }
       else if (pm != null && pm >= 0.5) d += ' · promoter adding';
-      out.push({ cat: 'Ownership', cls: cls, verb: verb, vshort: verb, detail: d, mag: Math.abs(flow), fields: { fii: fq, dii: dq } });
+      out.push({ cat: 'Ownership', cls: cls, verb: verb, vshort: verb, detail: d, mag: Math.abs(flow), fields: { fii: fq, dii: dq, sh: { promoter: sh.promoter || null, fii: sh.fii || null, dii: sh.dii || null } } });
     }
 
     // Valuation — P/B vs ROE (fair P/B ≈ ROE / 12)
