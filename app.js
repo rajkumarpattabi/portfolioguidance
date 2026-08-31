@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v61';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v62';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -43,6 +43,7 @@
     impactMeta: load(K.impactMeta, null),
     gdrive: load(K.gdrive, { enabled: false, lastBackup: 0 }),
     subOpen: {},
+    insOpen: {},   // Action → Insights category collapse state (default open)
     view: UI.view || 'dash',
     actionMode: UI.actionMode || 'stock',  // 'stock' | 'sector'
     holdView: UI.holdView || 'holdings',   // 'holdings' | 'watchlist'
@@ -1115,7 +1116,7 @@
     if (n) { n.textContent = insights; n.hidden = !insights; }   // count = "watch" (unfavourable) items
   }
 
-  // ---- Insights view (all holdings, grouped by category, attention-first) ----
+  // ---- Insights view (all holdings, collapsible category tables, attention-first) ----
   function renderActionInsights(body, rows) {
     if (!rows || !rows.length) {
       body.innerHTML = '<div class="empty-note">Insights appear once fundamentals are fetched (once a day). Open a stock or tap <strong>Refresh</strong>, then check back.</div>';
@@ -1125,18 +1126,39 @@
       var g = rows.filter(function (r) { return r.cat === c; }); if (!g.length) return '';
       g.sort(insSort);
       var att = g.filter(function (r) { return r.cls === 'down'; }).length;
-      var rowsHtml = g.map(function (r) {
-        return '<div class="insv-row ' + r.cls + '" onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
-          '<div class="insv-top"><span class="az-sym">' + esc(r.sym) + '</span>' +
-            '<span class="ins-tag ' + r.cls + '">' + r.verb + '</span>' +
-            '<span class="az-sec" style="color:' + sectorColor(r.sec) + '">' + esc(r.sec) + '</span></div>' +
-          '<div class="insv-detail">' + r.detail + '</div>' +
-        '</div>';
-      }).join('');
-      return '<div class="az-zone"><div class="az-zonehead">' + c + ' <span class="az-zcnt">' + g.length + '</span>' +
-        (att ? '<span class="insv-att">' + att + ' watch</span>' : '') + '</div><div class="az-body">' + rowsHtml + '</div></div>';
+      var open = state.insOpen[c] !== false;
+      var head = '<button class="ins-cat-btn" type="button" onclick="PG.toggleInsCat(\'' + c + '\')">' +
+        '<span class="ins-cat-name">' + c + '</span>' +
+        '<span class="ins-cat-meta"><span class="az-zcnt">' + g.length + '</span>' +
+          (att ? '<span class="insv-att">' + att + ' watch</span>' : '') + '<span class="ins-caret">▾</span></span>' +
+        '</button>';
+      return '<div class="ins-cat' + (open ? ' open' : '') + '">' + head +
+        '<div class="ins-cat-body"' + (open ? '' : ' hidden') + '>' + insTable(c, g) + '</div></div>';
     }).join('');
   }
+  function numTd(v) { v = v || 0; return '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>'; }
+  function insTable(cat, g) {
+    var header;
+    if (cat === 'Ownership') header = '<th>Stock</th><th>Verdict</th><th>FII</th><th>DII</th>';
+    else if (cat === 'Valuation') header = '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>';
+    else header = '<th>Stock</th><th>Verdict</th><th>vs 200D</th><th>Cross</th>';
+    var body = g.map(function (r) {
+      var fx = r.fields || {};
+      var cells;
+      if (cat === 'Ownership') cells = numTd(fx.fii) + numTd(fx.dii);
+      else if (cat === 'Valuation') cells = '<td>' + n1(fx.roe) + '%</td><td>' + n1(fx.pb) + '× / ' + n1(fx.fairPB) + '×</td>';
+      else {
+        var v = fx.vs200 || 0;
+        cells = '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + '%</td>' +
+          '<td class="' + (fx.cross ? 'up' : 'down') + '">' + (fx.cross ? 'golden' : 'death') + '</td>';
+      }
+      return '<tr onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
+        '<td class="it-stock"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</td>' +
+        '<td><span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span></td>' + cells + '</tr>';
+    }).join('');
+    return '<table class="ins-tbl"><thead><tr>' + header + '</tr></thead><tbody>' + body + '</tbody></table>';
+  }
+  function toggleInsCat(c) { state.insOpen[c] = (state.insOpen[c] === false) ? true : false; renderAction(); }
   function openStockDetail(sym) {
     state.holdView = 'holdings'; state.holdExpanded = sym; saveUI();
     setView('holdings'); renderHoldings();
@@ -1610,7 +1632,7 @@
       var pm = (sh.promoter && sh.promoter.qoq != null) ? sh.promoter.qoq : null;
       if (pm != null && pm <= -0.5) { d += ' · promoter slipping'; if (cls === 'up') cls = 'neutral'; }
       else if (pm != null && pm >= 0.5) d += ' · promoter adding';
-      out.push({ cat: 'Ownership', cls: cls, verb: verb, detail: d, mag: Math.abs(flow) });
+      out.push({ cat: 'Ownership', cls: cls, verb: verb, vshort: verb, detail: d, mag: Math.abs(flow), fields: { fii: fq, dii: dq } });
     }
 
     // Valuation — P/B vs ROE (fair P/B ≈ ROE / 12)
@@ -1621,7 +1643,8 @@
         if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for returns'; }
         else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to returns'; }
         var d2 = 'ROE ' + n1(f.roe) + '% ⇒ ~' + n1(fairPB) + '× book; at ' + n1(f.pb) + '×' + (isCyc ? ' · cyclical' : '');
-        out.push({ cat: 'Valuation', cls: cls2, verb: verb2, detail: d2, mag: Math.abs(rich - 1) });
+        var vs2 = rich < 0.8 ? 'Cheap' : rich > 1.3 ? 'Premium' : 'Fair';
+        out.push({ cat: 'Valuation', cls: cls2, verb: verb2, vshort: vs2, detail: d2, mag: Math.abs(rich - 1), fields: { roe: f.roe, pb: f.pb, fairPB: fairPB } });
       }
     }
 
@@ -1637,7 +1660,8 @@
         var pos = (px - f.wk52Low) / (f.wk52High - f.wk52Low) * 100;
         if (pos >= 85) d3 += ' · near 52-wk high'; else if (pos <= 15) d3 += ' · near 52-wk low';
       }
-      out.push({ cat: 'Trend', cls: cls3, verb: verb3, detail: d3, mag: mag });
+      var vs200 = f.sma200 ? (px - f.sma200) / f.sma200 * 100 : 0;
+      out.push({ cat: 'Trend', cls: cls3, verb: verb3, vshort: verb3, detail: d3, mag: mag, fields: { vs200: vs200, cross: golden } });
     }
     return out;
   }
@@ -1668,7 +1692,7 @@
     var rows = [];
     state.holdings.forEach(function (h) {
       var bs = baseSymbol(h.symbol), sec = sectorOf(h.symbol);
-      computeInsights(bs, h.ltp, sec).forEach(function (it) { rows.push({ sym: h.symbol, sec: sec, cat: it.cat, cls: it.cls, verb: it.verb, detail: it.detail, mag: it.mag }); });
+      computeInsights(bs, h.ltp, sec).forEach(function (it) { rows.push({ sym: h.symbol, sec: sec, cat: it.cat, cls: it.cls, verb: it.verb, vshort: it.vshort, detail: it.detail, mag: it.mag, fields: it.fields }); });
     });
     return rows;
   }
@@ -1999,7 +2023,7 @@
     calc: calc, calcPickStock: calcPickStock, calcAddDrive: calcAddDrive, toggleSector: toggleSector, toggleHold: toggleHold,
     openCalcMode: openCalcMode, openCalcNew: openCalcNew, calcBack: calcBack,
     openImpact: openImpact, impactBack: impactBack, acknowledgeImpact: acknowledgeImpact,
-    fbInfo: fbInfo, insInfo: insInfo, openStockDetail: openStockDetail,
+    fbInfo: fbInfo, insInfo: insInfo, openStockDetail: openStockDetail, toggleInsCat: toggleInsCat,
     openSectorSheet: openSectorSheet, setSector: setSector, closeSectorSheet: closeSectorSheet, sheetBackdrop: sheetBackdrop,
     addSector: addSector, removeCustomSector: removeCustomSector,
     addWatch: addWatch, removeWatch: removeWatch, setHoldView: setHoldView, openWatchCalc: openWatchCalc,
