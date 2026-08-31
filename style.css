@@ -154,12 +154,16 @@ main{flex:1;padding:16px}
 .it-stock .alloc-dot{width:8px;height:8px;margin-right:6px}
 .ins-tbl .up{color:var(--up)}.ins-tbl .down{color:var(--down)}
 .ins-tbl td .ins-tag{font-size:9.5px;padding:1px 6px}
-/* Ownership 9-field wide table (horizontal scroll on mobile) */
+/* Ownership 9-field wide table — Stock+Verdict frozen, rest scrolls horizontally */
 .ins-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .ins-own{min-width:560px}
 .ins-own th[colspan]{text-align:center;font-size:9px}
 .ins-own td.grp,.ins-own th.grp{border-left:1px solid var(--line)}
 .ins-own td,.ins-own th{padding-left:6px;padding-right:6px}
+.ins-own .c-stock{position:sticky;left:0;min-width:86px;max-width:86px;background:var(--card);z-index:2;text-align:left;overflow:hidden;text-overflow:ellipsis}
+.ins-own .c-verd{position:sticky;left:86px;min-width:82px;max-width:82px;background:var(--card);z-index:2;text-align:left;border-right:1px solid var(--line)}
+.ins-own thead .c-stock,.ins-own thead .c-verd{z-index:3;background:var(--card2)}
+.ins-legend{font-size:9.5px;color:var(--mut2);padding:6px 2px 2px}
 .fb-info{background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0 4px;vertical-align:middle}
 .fb-note{margin-top:8px;padding:9px 11px;background:var(--card2);border:1px solid var(--line);border-radius:9px;
   font-size:11.5px;line-height:1.55;color:var(--mut)}

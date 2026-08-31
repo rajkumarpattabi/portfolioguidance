@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v63';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v64';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -1136,28 +1136,33 @@
         '<div class="ins-cat-body"' + (open ? '' : ' hidden') + '>' + insTable(c, g) + '</div></div>';
     }).join('');
   }
-  function deltaTd(v, grp) { return '<td class="' + (grp ? 'grp ' : '') + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>'; }
-  // Holding / QoQ / YoY triplet for one owner class (Promoter/FII/DII).
-  function shTriplet(o, grp) {
-    var H = '<td class="' + (grp ? 'grp' : '') + '">' + (o && o.now != null ? n1(o.now) + '%' : '—') + '</td>';
-    var Q = (o && o.qoq != null) ? deltaTd(o.qoq) : '<td>—</td>';
-    var Y = (o && o.yoy != null) ? deltaTd(o.yoy) : '<td>—</td>';
-    return H + Q + Y;
+  // Δ cell (QoQ/YoY) — signed, colour-coded; '—' when absent.
+  function dCell(o, key, grp) {
+    var v = (o && o[key] != null) ? o[key] : null;
+    if (v == null) return '<td class="' + (grp ? 'grp' : '') + '">—</td>';
+    return '<td class="' + (grp ? 'grp ' : '') + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '</td>';
   }
+  // Holding cell (current %).
+  function hCell(o, grp) { return '<td class="' + (grp ? 'grp' : '') + '">' + (o && o.now != null ? n1(o.now) + '%' : '—') + '</td>'; }
   function insTable(cat, g) {
-    // Ownership = wide 9-field table (Promoter/FII/DII × H,Q,Y) → grouped header + horizontal scroll.
+    // Ownership = wide table. Order: Stock · Verdict (both frozen) · Quarterly(P/F/D) · Yearly(P/F/D) · Holding(P/F/D).
     if (cat === 'Ownership') {
       var head = '<thead>' +
-        '<tr><th rowspan="2">Stock</th><th colspan="3">Promoter</th><th colspan="3" class="grp">FII</th><th colspan="3" class="grp">DII</th><th rowspan="2" class="grp">Verdict</th></tr>' +
-        '<tr><th>H</th><th>Q</th><th>Y</th><th class="grp">H</th><th>Q</th><th>Y</th><th class="grp">H</th><th>Q</th><th>Y</th></tr></thead>';
+        '<tr><th rowspan="2" class="c-stock">Stock</th><th rowspan="2" class="c-verd">Verdict</th>' +
+          '<th colspan="3">Quarterly Δ</th><th colspan="3" class="grp">Yearly Δ</th><th colspan="3" class="grp">Holding</th></tr>' +
+        '<tr><th>P</th><th>F</th><th>D</th><th class="grp">P</th><th>F</th><th>D</th><th class="grp">P</th><th>F</th><th>D</th></tr></thead>';
       var rowsO = g.map(function (r) {
-        var sh = (r.fields && r.fields.sh) || {};
+        var sh = (r.fields && r.fields.sh) || {}, p = sh.promoter, f = sh.fii, di = sh.dii;
         return '<tr onclick="PG.openStockDetail(\'' + esc(r.sym) + '\')">' +
-          '<td class="it-stock"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</td>' +
-          shTriplet(sh.promoter, false) + shTriplet(sh.fii, true) + shTriplet(sh.dii, true) +
-          '<td class="grp"><span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span></td></tr>';
+          '<td class="it-stock c-stock"><span class="alloc-dot" style="background:' + sectorColor(r.sec) + '"></span>' + esc(r.sym) + '</td>' +
+          '<td class="c-verd"><span class="ins-tag ' + r.cls + '">' + esc(r.vshort || r.verb) + '</span></td>' +
+          dCell(p, 'qoq') + dCell(f, 'qoq') + dCell(di, 'qoq') +
+          dCell(p, 'yoy', true) + dCell(f, 'yoy') + dCell(di, 'yoy') +
+          hCell(p, true) + hCell(f) + hCell(di) +
+        '</tr>';
       }).join('');
-      return '<div class="ins-scroll"><table class="ins-tbl ins-own">' + head + '<tbody>' + rowsO + '</tbody></table></div>';
+      return '<div class="ins-scroll"><table class="ins-tbl ins-own">' + head + '<tbody>' + rowsO + '</tbody></table>' +
+        '<div class="ins-legend">P Promoter · F FII · D DII · Δ = change (pp) · Holding = current %</div></div>';
     }
     var header = (cat === 'Valuation')
       ? '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>'
