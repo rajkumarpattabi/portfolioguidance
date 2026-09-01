@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v68';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v69';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -1429,13 +1429,21 @@
         return '<div class="own-row ' + r.cls + (open ? ' open' : '') + '">' + head + detail + '</div>';
       }).join('');
     }
-    var header = (cat === 'Valuation')
-      ? '<th>Stock</th><th>Verdict</th><th>ROE</th><th>P/B / fair</th>'
+    var header =
+      cat === 'Quality' ? '<th>Stock</th><th>Verdict</th><th>ROCE</th><th>PE</th>'
+      : cat === 'Valuation' ? '<th>Stock</th><th>Verdict</th><th>P/B / fair</th><th>E.yield</th>'
+      : cat === 'Income' ? '<th>Stock</th><th>Verdict</th><th>Div yld</th><th>Est ₹/yr</th>'
       : '<th>Stock</th><th>Verdict</th><th>vs 200D</th><th>Cross</th>';
     var body = g.map(function (r) {
       var fx = r.fields || {}, cells;
-      if (cat === 'Valuation') cells = '<td>' + n1(fx.roe) + '%</td><td>' + n1(fx.pb) + '× / ' + n1(fx.fairPB) + '×</td>';
-      else {
+      if (cat === 'Quality') {
+        cells = '<td>' + (fx.roce != null ? n1(fx.roce) + '%' : '—') + '</td><td>' + (fx.pe != null ? n1(fx.pe) + '×' : '—') + '</td>';
+      } else if (cat === 'Valuation') {
+        var pbc = (fx.pb != null && fx.fairPB != null) ? (n1(fx.pb) + '× / ' + n1(fx.fairPB) + '×') : (fx.pb != null ? n1(fx.pb) + '×' : '—');
+        cells = '<td>' + pbc + '</td><td>' + (fx.ey != null ? n1(fx.ey) + '%' : '—') + '</td>';
+      } else if (cat === 'Income') {
+        cells = '<td>' + (fx.dy != null ? n1(fx.dy) + '%' : '—') + '</td><td>' + (fx.estInc != null ? '₹' + inr0.format(Math.round(fx.estInc)) : '—') + '</td>';
+      } else {
         var v = fx.vs200 || 0;
         cells = '<td class="' + (v >= 0 ? 'up' : 'down') + '">' + (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(0) + '%</td>' +
           '<td class="' + (fx.cross ? 'up' : 'down') + '">' + (fx.cross ? 'golden' : 'death') + '</td>';
@@ -1896,7 +1904,8 @@
   function fbInfo(btn) { var b = btn.closest('.fb-block'); if (!b) return; var n = b.querySelector('.fb-note'); if (n) n.hidden = !n.hidden; }
 
   // ---- Insights (multi-metric, observational) ----
-  var INS_CATS = ['Ownership', 'Valuation', 'Trend'];
+  var INS_CATS = ['Ownership', 'Quality', 'Valuation', 'Income', 'Trend'];
+  var RF_YIELD = 6.5;   // India ~10-yr G-sec — risk-free hurdle for the earnings/dividend-yield reads
   function sgn1(v) { return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1); }
   function insRank(cls) { return cls === 'down' ? 0 : cls === 'neutral' ? 1 : 2; }   // attention-first
   function insSort(a, b) { var r = insRank(a.cls) - insRank(b.cls); return r || ((b.mag || 0) - (a.mag || 0)); }
@@ -1906,13 +1915,15 @@
     var f = state.funds[sym]; if (!f) return [];
     var isCyc = (sec === 'Metals & Mining' || sec === 'Automobiles');
     var isETF = (sec === 'Gold' || /ETF$/.test(sym));
+    var isFin = (sec === 'Finance' || sec === 'Insurance');
     var out = [];
+    var vs200 = (f.sma200 != null && px != null && f.sma200) ? (px - f.sma200) / f.sma200 * 100 : null;
 
-    // Ownership — FII + DII change, promoter modifier
+    // Ownership — FII + DII change, promoter modifier, + smart-money-vs-price divergence
     var sh = f.shareholding;
     if (!isETF && sh && ((sh.fii && sh.fii.qoq != null) || (sh.dii && sh.dii.qoq != null))) {
       var fq = (sh.fii && sh.fii.qoq != null) ? sh.fii.qoq : 0, dq = (sh.dii && sh.dii.qoq != null) ? sh.dii.qoq : 0, flow = fq + dq;
-      var fy = (sh.fii && sh.fii.yoy != null) ? sh.fii.yoy : 0, dy = (sh.dii && sh.dii.yoy != null) ? sh.dii.yoy : 0, flowY = fy + dy;
+      var fy = (sh.fii && sh.fii.yoy != null) ? sh.fii.yoy : 0, dyo = (sh.dii && sh.dii.yoy != null) ? sh.dii.yoy : 0, flowY = fy + dyo;
       var cls = 'neutral', verb = 'Steady';
       if ((fq > 0.2 && dq < -0.2) || (fq < -0.2 && dq > 0.2)) { cls = 'neutral'; verb = 'Rotating'; }
       else if (flow > 0.2) { cls = 'up'; verb = 'Accumulating'; }
@@ -1921,20 +1932,67 @@
       var pm = (sh.promoter && sh.promoter.qoq != null) ? sh.promoter.qoq : null;
       if (pm != null && pm <= -0.5) { d += ' · promoter slipping'; if (cls === 'up') cls = 'neutral'; }
       else if (pm != null && pm >= 0.5) d += ' · promoter adding';
+      // #3 divergence: institutions moving against price
+      if (vs200 != null) {
+        if (flow > 0.2 && vs200 <= -3) d += ' · buying into weakness';
+        else if (flow < -0.2 && vs200 >= 3) d += ' · selling into strength';
+      }
       out.push({ cat: 'Ownership', cls: cls, verb: verb, vshort: verb, detail: d, mag: Math.abs(flow), fields: { fii: fq, dii: dq, sh: { promoter: sh.promoter || null, fii: sh.fii || null, dii: sh.dii || null } } });
     }
 
-    // Valuation — P/B vs ROE (fair P/B ≈ ROE / 12)
-    if (!isETF && f.pb != null && f.roe != null && f.roe > 0) {
-      var fairPB = f.roe / 12, rich = fairPB > 0 ? f.pb / fairPB : null;
-      if (rich != null) {
-        var cls2 = 'neutral', verb2 = 'Fairly valued';
-        if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for returns'; }
-        else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to returns'; }
-        var d2 = 'ROE ' + n1(f.roe) + '% ⇒ ~' + n1(fairPB) + '× book; at ' + n1(f.pb) + '×' + (isCyc ? ' · cyclical' : '');
-        var vs2 = rich < 0.8 ? 'Cheap' : rich > 1.3 ? 'Premium' : 'Fair';
-        out.push({ cat: 'Valuation', cls: cls2, verb: verb2, vshort: vs2, detail: d2, mag: Math.abs(rich - 1), fields: { roe: f.roe, pb: f.pb, fairPB: fairPB } });
+    // Quality — returns on capital at the price paid (ROCE band × PE band). Skip financials & ETFs.
+    if (!isETF && !isFin && f.roce != null && f.pe != null && f.pe > 0) {
+      var q = f.roce, p = f.pe, clsQ = 'neutral', verbQ = 'Fair quality/price', vsQ = 'Fair';
+      if (q >= 20) {
+        if (p < 15) { clsQ = 'up'; verbQ = 'Quality on sale'; vsQ = 'On sale'; }
+        else if (p <= 30) { clsQ = 'up'; verbQ = 'Quality at a fair price'; vsQ = 'Quality'; }
+        else { clsQ = 'neutral'; verbQ = 'Quality, premium price'; vsQ = 'Premium'; }
+      } else if (q < 15) {
+        if (p > 30) { clsQ = 'down'; verbQ = 'Weak returns, pricey'; vsQ = 'Weak+pricey'; }
+        else if (p < 15) { clsQ = 'neutral'; verbQ = 'Cheap, low returns'; vsQ = 'Cheap/low RoC'; }
+        else { clsQ = 'neutral'; verbQ = 'Modest quality'; vsQ = 'Modest'; }
+      } else {
+        if (p > 35) { clsQ = 'down'; verbQ = 'Decent returns, pricey'; vsQ = 'Pricey'; }
+        else { clsQ = 'neutral'; verbQ = 'Decent quality'; vsQ = 'Decent'; }
       }
+      var dQ = 'ROCE ' + n1(q) + '% · PE ' + n1(p) + '×' + (isCyc ? ' · cyclical (mid-cycle?)' : '');
+      out.push({ cat: 'Quality', cls: clsQ, verb: verbQ, vshort: vsQ, detail: dQ, mag: Math.abs(q - 17) + Math.abs(p - 22) / 4, fields: { roce: q, pe: p } });
+    }
+
+    // Valuation — P/B vs ROE (primary) + earnings yield vs G-sec (fold-in / fallback)
+    var ey = (f.pe != null && f.pe > 0) ? 100 / f.pe : null;
+    if (!isETF && ((f.pb != null && f.roe != null && f.roe > 0) || ey != null)) {
+      var cls2 = 'neutral', verb2 = 'Fairly valued', vs2 = 'Fair', mag2 = 0, fairPB = null, rich = null;
+      if (f.pb != null && f.roe != null && f.roe > 0) {
+        fairPB = f.roe / 12; rich = fairPB > 0 ? f.pb / fairPB : null;
+        if (rich != null) {
+          if (rich < 0.8) { cls2 = 'up'; verb2 = 'Cheap for returns'; vs2 = 'Cheap'; }
+          else if (rich > 1.3) { cls2 = 'down'; verb2 = 'Premium to returns'; vs2 = 'Premium'; }
+          mag2 = Math.abs(rich - 1);
+          // reconcile with earnings yield when the two lenses disagree (often cyclicals)
+          if (ey != null) {
+            if (rich > 1.3 && ey >= RF_YIELD + 2) { cls2 = 'neutral'; verb2 = 'Mixed — pricey on book, cheap on earnings'; vs2 = 'Mixed'; }
+            else if (rich < 0.8 && ey < RF_YIELD - 2.5) { cls2 = 'neutral'; verb2 = 'Mixed — cheap on book, thin earnings yield'; vs2 = 'Mixed'; }
+          }
+        }
+      } else if (ey != null) {
+        if (ey >= RF_YIELD + 2) { cls2 = 'up'; verb2 = 'High earnings yield'; vs2 = 'Cheap'; }
+        else if (ey < RF_YIELD - 2.5) { cls2 = 'neutral'; verb2 = 'Low earnings yield'; vs2 = 'Rich'; }
+        mag2 = Math.abs(ey - RF_YIELD) / 5;
+      }
+      var dp = [];
+      if (rich != null) dp.push('ROE ' + n1(f.roe) + '% ⇒ ~' + n1(fairPB) + '× book; at ' + n1(f.pb) + '×');
+      if (ey != null) dp.push('earns ' + n1(ey) + '% vs ' + RF_YIELD + '% G-sec');
+      var d2 = dp.join(' · ') + (isCyc ? ' · cyclical' : '');
+      out.push({ cat: 'Valuation', cls: cls2, verb: verb2, vshort: vs2, detail: d2, mag: mag2, fields: { roe: (f.roe != null ? f.roe : null), pb: (f.pb != null ? f.pb : null), fairPB: fairPB, ey: ey } });
+    }
+
+    // Income — dividend yield vs cash (only when noteworthy). Dividends are never a red flag → no 'down'.
+    if (!isETF && f.divYield != null && f.divYield >= 1.5) {
+      var dv = f.divYield;
+      out.push({ cat: 'Income', cls: dv >= 4 ? 'up' : 'neutral', verb: dv >= 4 ? 'High dividend income' : 'Pays a dividend',
+        vshort: dv >= 4 ? 'High yield' : 'Some income', detail: n1(dv) + '% dividend yield' + (isCyc ? ' (verify for cyclicals)' : ''),
+        mag: dv, fields: { dy: dv } });
     }
 
     // Trend — price vs 50/200-DMA + golden/death cross + 52-wk position
@@ -1949,8 +2007,7 @@
         var pos = (px - f.wk52Low) / (f.wk52High - f.wk52Low) * 100;
         if (pos >= 85) d3 += ' · near 52-wk high'; else if (pos <= 15) d3 += ' · near 52-wk low';
       }
-      var vs200 = f.sma200 ? (px - f.sma200) / f.sma200 * 100 : 0;
-      out.push({ cat: 'Trend', cls: cls3, verb: verb3, vshort: verb3, detail: d3, mag: mag, fields: { vs200: vs200, cross: golden } });
+      out.push({ cat: 'Trend', cls: cls3, verb: verb3, vshort: verb3, detail: d3, mag: mag, fields: { vs200: (vs200 != null ? vs200 : 0), cross: golden } });
     }
     return out;
   }
@@ -1968,9 +2025,11 @@
     }).join('');
     var note = '<div class="ins-note" hidden>' +
       '<b>How these are read — observations, not advice:</b><br>' +
-      '<b>Ownership</b> — FII + DII stake change vs last quarter (and YoY). Up = institutions buying, down = trimming; a notable promoter change is flagged.<br>' +
-      '<b>Valuation</b> — a higher ROE justifies a higher price-to-book. Fair ≈ ROE ÷ 12%. Well above = premium; below = cheap for the returns it earns.<br>' +
-      '<b>Trend</b> — price vs its 50 &amp; 200-day averages, and whether the 50-day is above the 200-day (golden cross). Above both = uptrend.' +
+      '<b>Ownership</b> — FII + DII stake change vs last quarter (and YoY). Up = institutions buying, down = trimming; a notable promoter change is flagged. If institutions move against the price (buying while it\'s below its 200-day average, or selling while above), that divergence is noted.<br>' +
+      '<b>Quality</b> — returns on capital (ROCE) against the price paid (PE). High ROCE at a modest PE = a good business at a fair price; high PE with low ROCE = expensive for the returns. Skipped for banks/NBFCs (ROCE isn\'t meaningful there).<br>' +
+      '<b>Valuation</b> — a higher ROE justifies a higher price-to-book (fair ≈ ROE ÷ 12%); and the earnings yield (1 ÷ PE) is compared to the ~' + RF_YIELD + '% government-bond yield — above bonds = cheap on earnings, well below = priced for growth.<br>' +
+      '<b>Income</b> — dividend yield; 4%+ is a meaningful cash return. Verify sustainability for cyclicals.<br>' +
+      '<b>Trend</b> — price vs its 50 &amp; 200-day averages, whether the 50-day is above the 200-day (golden cross), and position within the 52-week range. Above both averages = uptrend.' +
       '</div>';
     return '<div class="ins-block"><div class="ins-head">Signals<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + body + note + '</div>';
   }
@@ -1981,7 +2040,13 @@
     var rows = [];
     state.holdings.forEach(function (h) {
       var bs = baseSymbol(h.symbol), sec = sectorOf(h.symbol);
-      computeInsights(bs, h.ltp, sec).forEach(function (it) { rows.push({ sym: h.symbol, sec: sec, cat: it.cat, cls: it.cls, verb: it.verb, vshort: it.vshort, detail: it.detail, mag: it.mag, fields: it.fields }); });
+      computeInsights(bs, h.ltp, sec).forEach(function (it) {
+        var fields = it.fields;
+        if (it.cat === 'Income' && fields && fields.dy != null) {
+          fields = Object.assign({}, fields, { estInc: fields.dy / 100 * (h.qty || 0) * (h.ltp || 0) });   // yearly ₹ from this holding
+        }
+        rows.push({ sym: h.symbol, sec: sec, cat: it.cat, cls: it.cls, verb: it.verb, vshort: it.vshort, detail: it.detail, mag: it.mag, fields: fields });
+      });
     });
     return rows;
   }
