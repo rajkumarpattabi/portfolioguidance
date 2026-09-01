@@ -14,7 +14,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
 
 /* header */
 header{position:sticky;top:0;z-index:20;background:linear-gradient(#12151c,#12151cf2);
-  backdrop-filter:blur(10px);padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;border-bottom:1px solid var(--line)}
+  backdrop-filter:blur(10px);padding:calc(env(safe-area-inset-top) + 10px) 16px 9px;border-bottom:1px solid var(--line)}
 .h-top{display:flex;align-items:center;justify-content:space-between}
 .brand{font-weight:700;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
 .brand .dot{color:var(--accent);font-size:20px}
@@ -25,15 +25,15 @@ header{position:sticky;top:0;z-index:20;background:linear-gradient(#12151c,#1215
 .live{width:8px;height:8px;border-radius:50%;background:var(--mut2)}
 .live.on{background:var(--up);box-shadow:0 0 0 3px #34c78933}
 
-.summary{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:12px}
+.summary{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:6px}
 .summary:empty{display:none}
-.summary.tappable{position:relative;cursor:pointer;border-radius:12px;padding:10px 10px 16px;margin-left:-6px;margin-right:-6px;
+.summary.tappable{position:relative;cursor:pointer;border-radius:12px;padding:6px 22px 6px 8px;margin-left:-6px;margin-right:-6px;
   border:1px solid transparent;transition:border-color .15s,background .15s}
 .summary.tappable:active{background:var(--card)}
 .summary.open{border-color:#4da3ff40;background:var(--card)}
-.sm-caret{position:absolute;right:8px;bottom:4px;font-size:11px;color:var(--mut);transition:transform .2s}
-.summary.open .sm-caret{transform:rotate(180deg);color:var(--accent)}
-.sm-item{display:flex;flex-direction:column;gap:2px}
+.sm-caret{position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--mut);transition:transform .2s,color .15s}
+.summary.open .sm-caret{transform:translateY(-50%) rotate(180deg);color:var(--accent)}
+.sm-item{display:flex;flex-direction:column;gap:1px}
 .sm-k{font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
 .sm-v{font-size:13.5px;font-weight:700}
 .sm-v em{font-style:normal;font-size:11px;font-weight:600;opacity:.85}

@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v69';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v70';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -207,6 +207,14 @@
     bar.classList.add('tappable');
     bar.classList.toggle('open', !!state.trendOpen);
     renderTrend();
+    updateRibbonVisibility();
+  }
+
+  // The summary ribbon + trend graph live only on the Dashboard tab.
+  function updateRibbonVisibility() {
+    var dash = state.view === 'dash';
+    var sb = el('summaryBar'); if (sb) sb.style.display = dash ? '' : 'none';
+    var tp = el('trendPanel'); if (tp) tp.style.display = (dash && state.trendOpen) ? '' : 'none';
   }
 
   // ---------- portfolio trend graph ----------
@@ -216,6 +224,7 @@
     state.trendTip = null;
     el('summaryBar').classList.toggle('open', state.trendOpen);
     renderTrend();
+    updateRibbonVisibility();
   }
   function setTrendRange(r) { state.trendRange = r; state.trendTip = null; saveUI(); renderTrend(); }
   function trendTip(i) { state.trendTip = (state.trendTip === i ? null : i); renderTrend(); }
@@ -2304,6 +2313,7 @@
     state.view = v;
     document.querySelectorAll('.view').forEach(function (n) { n.classList.toggle('active', n.id === 'v-' + v); });
     document.querySelectorAll('nav button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-v') === v); });
+    updateRibbonVisibility();
     if (v === 'dash') { var t = totals(); drawDonut(bySector(state.allocBasis), state.allocBasis === 'value' ? t.value : t.invested); }
     if (v === 'action') renderAction();   // always refresh Action (zones/caps may have changed in Settings)
     window.scrollTo(0, 0);
