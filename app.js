@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v70';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v71';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -754,10 +754,12 @@
   function snapOf(holdings) { return holdings.map(function (h) { return { symbol: h.symbol, qty: h.qty, avg: h.avg, ltp: h.ltp }; }); }
 
   // Diff two holdings sets on qty/avg only (LTP/price moves are ignored on purpose).
+  // Keyed on baseSymbol so a Zerodha series-suffix flip (e.g. CEREBRAINT ↔ CEREBRAINT-BZ)
+  // is NOT read as an exit + a new buy — same underlying stock, same key.
   function diffHoldings(base, cur) {
     var bm = {}, cm = {}, events = [];
-    (base || []).forEach(function (h) { bm[h.symbol] = h; });
-    (cur || []).forEach(function (h) { cm[h.symbol] = h; });
+    (base || []).forEach(function (h) { bm[baseSymbol(h.symbol)] = h; });
+    (cur || []).forEach(function (h) { cm[baseSymbol(h.symbol)] = h; });
     Object.keys(bm).forEach(function (sym) {
       var b = bm[sym], c = cm[sym];
       if (!c) { events.push({ sym: sym, type: 'exited', old: b }); return; }
