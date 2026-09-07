@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v71';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v72';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -264,13 +264,13 @@
     var invs = data.map(function (r) { return r.inv; });
     var W = 372, H = 196, padL = 46, padR = 70, padT = 12, padB = 8;
 
-    // nice y-axis range: pad the data min/max, then round to a clean step
+    // Tight y-axis: 2% below the lowest line (normally min Invested) to 2% above the
+    // highest line (normally max Value), so the two lines fill the chart vertically.
     var lo0 = Math.min.apply(null, vals.concat(invs));
     var hi0 = Math.max.apply(null, vals.concat(invs));
-    var pad = (hi0 - lo0) * 0.12 || Math.max(hi0 * 0.02, 1);
-    var lo = lo0 - pad, hi = hi0 + pad;
-    var step = niceStep((hi - lo) / 4);
-    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    var lo = lo0 * 0.98, hi = hi0 * 1.02;
+    if (!(hi > lo)) hi = lo + 1;                 // guard a flat series
+    var step = (hi - lo) / 4;                    // 5 evenly-spaced gridlines
 
     function X(i) { return padL + i * ((W - padR - padL) / (n - 1)); }
     function Y(v) { return padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo)); }
@@ -293,8 +293,8 @@
     below += 'L' + (W - padR) + ' ' + (H - padB) + ' L' + padL + ' ' + (H - padB) + 'Z';
 
     var grid = '';
-    for (var g = lo; g <= hi + 1; g += step) {
-      var y = Y(g);
+    for (var gi = 0; gi <= 4; gi++) {
+      var g = lo + (hi - lo) * gi / 4, y = Y(g);
       grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#1c2332" stroke-width="1"/>';
       grid += '<text x="' + (padL - 8) + '" y="' + (y + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#5f6b7e" font-weight="600">' + lakhLbl(g) + '</text>';
     }
