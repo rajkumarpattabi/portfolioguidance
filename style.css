@@ -376,6 +376,8 @@ nav button.active{color:var(--accent)}
   padding:10px 11px;cursor:pointer;text-align:left}
 .sh-name{flex:1;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sh-pct{font-size:12px;font-weight:700;color:var(--mut)}
+.sh-day{font-size:8.5px;font-weight:700;margin-left:4px}
+.sh-day.up{color:var(--up)}.sh-day.down{color:var(--down)}
 .sh-caret{font-size:11px;color:var(--mut);transition:transform .18s}
 .sec-card.open .sh-caret{transform:rotate(180deg)}
 .sec-stocks{padding:2px 11px 9px 28px}

@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v72';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v73';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -477,9 +477,16 @@
       var p = total ? s.value / total * 100 : 0;
       var open = !!state.expanded[s.sector];
       var hs = holdingsInSector(s.sector);
-      var secInv = 0, secVal = 0;
-      hs.forEach(function (h) { secInv += h.invested; secVal += h.value; });
+      var secInv = 0, secVal = 0, secDay = 0;
+      hs.forEach(function (h) { secInv += h.invested; secVal += h.value; secDay += h.day; });
       var secPnl = secVal - secInv, secPct = secInv ? secPnl / secInv * 100 : 0;
+      // Value mode: cumulative day impact for the sector, on its prior-day value.
+      var dayHtml = '';
+      if (val) {
+        var secDayPct = (secVal - secDay) ? secDay / (secVal - secDay) * 100 : 0;
+        dayHtml = '<span class="sh-day ' + (secDayPct >= 0 ? 'up' : 'down') + '">(' +
+          (secDayPct >= 0 ? '+' : '−') + Math.abs(secDayPct).toFixed(1) + '%)</span>';
+      }
       var stocks = hs.map(function (h) {
         var w = total ? (val ? h.value : h.invested) / total * 100 : 0;
         return '<div class="sec-stock"><span class="ss-sym">' + esc(h.symbol) + '</span>' +
@@ -495,7 +502,7 @@
         '<button class="sec-head" type="button" onclick="PG.toggleSector(' + i + ')">' +
           '<span class="alloc-dot" style="background:' + sectorColor(s.sector) + '"></span>' +
           '<span class="sh-name">' + esc(s.sector) + '</span>' +
-          '<span class="sh-pct">' + p.toFixed(1) + '%</span>' +
+          '<span class="sh-pct">' + p.toFixed(1) + '%' + dayHtml + '</span>' +
           '<span class="sh-caret">▾</span>' +
         '</button>' +
         '<div class="sec-stocks"' + (open ? '' : ' hidden') + '>' + sum + stocks + '</div>' +
