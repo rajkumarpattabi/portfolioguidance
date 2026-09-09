@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v73';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v74';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -489,8 +489,10 @@
       }
       var stocks = hs.map(function (h) {
         var w = total ? (val ? h.value : h.invested) / total * 100 : 0;
+        var sd = val ? '<span class="ss-day ' + (h.dayPct >= 0 ? 'up' : 'down') + '">(' +
+          (h.dayPct >= 0 ? '+' : '−') + Math.abs(h.dayPct).toFixed(1) + '%)</span>' : '';
         return '<div class="sec-stock"><span class="ss-sym">' + esc(h.symbol) + '</span>' +
-          '<span class="ss-wt">' + w.toFixed(1) + '%</span></div>';
+          '<span class="ss-wt">' + w.toFixed(1) + '%' + sd + '</span></div>';
       }).join('');
       var pcls = secPnl >= 0 ? 'up' : 'down';
       var sum = '<div class="sec-sum">' +

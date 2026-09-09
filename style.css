@@ -384,6 +384,8 @@ nav button.active{color:var(--accent)}
 .sec-stock{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line)}
 .ss-sym{font-size:10.5px;font-weight:600;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ss-wt{font-size:10.5px;font-weight:700;color:var(--mut)}
+.ss-day{font-size:8.5px;font-weight:700;margin-left:4px}
+.ss-day.up{color:var(--up)}.ss-day.down{color:var(--down)}
 
 /* collapsible settings sections */
 .set-sec{margin-top:20px}
