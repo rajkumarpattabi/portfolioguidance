@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v74';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v75';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -48,7 +48,7 @@
     insOpen: {},   // Action → Insights category collapse state (default open)
     insRowOpen: {}, // Action → Insights Ownership per-stock expand state
     view: UI.view || 'dash',
-    actionMode: UI.actionMode || 'stock',  // 'stock' | 'sector'
+    actionMode: UI.actionMode || 'attention',  // 'attention' | 'stocks' | 'sectors'
     holdView: UI.holdView || 'holdings',   // 'holdings' | 'watchlist'
     holdSort: UI.holdSort || 'value',
     holdDir: UI.holdDir || 'desc',
@@ -1363,24 +1363,124 @@
 
   function setActionBadge(n) { var b = el('actionBadge'); if (b) { b.textContent = n; b.hidden = !n; } }
 
+  var AMODES = { attention: 1, stocks: 1, sectors: 1 };
   function renderAction() {
     var body = el('actionBody'); if (!body) return;
+    if (!AMODES[state.actionMode]) state.actionMode = 'attention';   // migrate old stock/sector/insights
     updateActionToggle();
     if (!state.holdings.length) { setActionBadge(0); setActionToggleCounts(0, 0, 0); body.innerHTML = '<div class="empty-note">No holdings loaded yet.</div>'; return; }
-    var sz = computeStockZones(), sc = computeSectorCaps(), ins = computeInsightsAll();
-    var insAtt = ins.filter(function (r) { return r.cls === 'down'; }).length;
-    setActionBadge(sz.anyBuy + sz.anySell + sc.overCount);
-    setActionToggleCounts(sz.anyBuy + sz.anySell, sc.overCount, insAtt);
-    if (state.actionMode === 'sector') renderActionSector(body, sc);
-    else if (state.actionMode === 'insights') renderActionInsights(body, ins);
-    else renderActionStock(body, sz);
+    var sz = computeStockZones(), sc = computeSectorCaps();
+    var att = buildAttention(sz, sc);
+    var actNow = att.filter(function (a) { return a.sev >= 2; }).length;   // reds + ambers = act-on
+    var stkAtt = state.holdings.map(stockSignals).filter(function (s) { return s.worst === 0; }).length;
+    setActionBadge(actNow);
+    setActionToggleCounts(att.length, stkAtt, sc.overCount);
+    if (state.actionMode === 'sectors') renderActionSector(body, sc);
+    else if (state.actionMode === 'stocks') renderStockCards(body);
+    else renderAttention(body, att);
   }
 
-  function setActionToggleCounts(stock, sector, insights) {
-    var s = el('amodeStockCnt'), c = el('amodeSectorCnt'), n = el('amodeInsCnt');
-    if (s) { s.textContent = stock; s.hidden = !stock; }
-    if (c) { c.textContent = sector; c.hidden = !sector; }
-    if (n) { n.textContent = insights; n.hidden = !insights; }   // count = "watch" (unfavourable) items
+  function setActionToggleCounts(attention, stocks, sectors) {
+    var a = el('amodeAttnCnt'), s = el('amodeStkCnt'), c = el('amodeSecCnt');
+    if (a) { a.textContent = attention; a.hidden = !attention; }
+    if (s) { s.textContent = stocks; s.hidden = !stocks; }
+    if (c) { c.textContent = sectors; c.hidden = !sectors; }
+  }
+
+  // ---- per-stock signal bundle (shared by Attention + Stocks) ----
+  function stockSignals(h) {
+    var bs = baseSymbol(h.symbol), sec = sectorOf(h.symbol), e = enrich(h);
+    var items = computeInsights(bs, h.ltp, sec);
+    var byCat = {}; items.forEach(function (it) { byCat[it.cat] = it; });
+    var worst = items.reduce(function (m, it) { return Math.min(m, insRank(it.cls)); }, 3); // 0 = has a 'down'
+    return { h: h, sym: h.symbol, sec: sec, value: e.value, dayPct: e.dayPct, items: items, byCat: byCat, worst: worst };
+  }
+
+  // ---- Attention: one ranked feed across signals, price zones & sector caps ----
+  function buildAttention(sz, sc) {
+    var out = [], tVal = totals().value;
+    function uniq(a) { var seen = {}, r = []; a.forEach(function (x) { if (!seen[x]) { seen[x] = 1; r.push(x); } }); return r; }
+    state.holdings.forEach(function (h) {
+      var s = stockSignals(h), wt = tVal ? s.value / tVal * 100 : 0;
+      var downs = s.items.filter(function (it) { return it.cls === 'down'; });
+      // Only DETERIORATION (ownership slipping / trend breaking down) earns a red alert.
+      // A premium valuation or pricey quality is a standing state → it lives in the Stocks
+      // scorecards, not the alert feed, so Attention stays about things that changed.
+      var hot = downs.filter(function (it) { return it.cat === 'Ownership' || it.cat === 'Trend'; });
+      if (hot.length) {
+        downs.sort(function (a, b) { return (b.mag || 0) - (a.mag || 0); });
+        out.push({ kind: 'stock', sym: h.symbol, sec: s.sec, sev: 3, cls: 'red', ico: '!',
+          title: h.symbol, wt: wt, detail: downs.map(function (it) { return it.verb; }).join(' · ') + '.',
+          tags: uniq(downs.map(function (it) { return it.cat; })) });
+      }
+      var own = s.byCat['Ownership'];
+      if (own && own.cls !== 'down' && /weakness|strength/.test(own.detail)) {
+        out.push({ kind: 'stock', sym: h.symbol, sec: s.sec, sev: 1, cls: 'info', ico: '◇',
+          title: h.symbol, wt: wt, detail: 'Institutions ' + own.detail.split('·').pop().trim() + '.', tags: ['Ownership'] });
+      }
+    });
+    sc.rows.filter(function (r) { return r.over; }).forEach(function (r) {
+      out.push({ kind: 'sector', sector: r.sector, sev: 2, cls: 'amber', ico: '▲',
+        title: r.sector, wtLabel: 'sector',
+        detail: n1(r.weight) + '% of book — ' + n1(r.weight - (r.cap || 0)) + '% over your ' + n1(r.cap) + '% cap. Trim ≈ ' + money0(r.amount) + '.',
+        tags: ['Sector cap'] });
+    });
+    ['book', 'trim', 'watch'].forEach(function (k) { sz.sell[k].forEach(function (it) {
+      out.push({ kind: 'price', sym: it.sym, sec: it.sec, sev: 2, cls: 'amber', ico: '≈',
+        title: it.sym, detail: 'At/above your sell target ' + money2(it.target) + ' (+' + n1(it.pct) + '%).', tags: ['Price zone'] });
+    }); });
+    ['deep', 'value', 'acc'].forEach(function (k) { sz.buy[k].forEach(function (it) {
+      out.push({ kind: 'price', sym: it.sym, sec: it.sec, sev: 0, cls: 'good', ico: '◎',
+        title: it.sym, wtLabel: it.watch ? 'watchlist' : null,
+        detail: 'Near your buy zone ' + money2(it.target) + ' (−' + n1(it.pct) + '%).', tags: ['Price zone'] });
+    }); });
+    out.sort(function (a, b) { return b.sev - a.sev || (b.wt || 0) - (a.wt || 0); });
+    return out;
+  }
+  function renderAttention(body, att) {
+    if (!att.length) {
+      body.innerHTML = '<div class="empty-note">Nothing needs your attention right now. As fundamentals refresh and prices move, notable items — a signal turning unfavourable, a sector over its cap, a price hitting your zone — show up here, most urgent first.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="att-cap">Most notable first · across price, allocation &amp; fundamentals</div>' +
+      att.map(function (a) {
+      var wt = a.wtLabel ? a.wtLabel : (a.wt != null ? n1(a.wt) + '%' : '');
+      var tags = (a.tags || []).map(function (t) { return '<span class="att-tag">' + esc(t) + '</span>'; }).join('');
+      var onclick = a.kind === 'sector' ? 'PG.setActionMode(\'sectors\')' : 'PG.openStockDetail(\'' + esc(a.sym) + '\')';
+      return '<div class="att-card ' + a.cls + '" onclick="' + onclick + '">' +
+        '<span class="att-ico">' + a.ico + '</span>' +
+        '<div class="att-body"><div class="att-t">' + esc(a.title) + (wt ? ' <span class="att-wt">' + esc(wt) + '</span>' : '') + '</div>' +
+        '<div class="att-s">' + esc(a.detail) + '</div>' +
+        (tags ? '<div class="att-tags">' + tags + '</div>' : '') + '</div>' +
+        '<span class="att-go">›</span></div>';
+    }).join('');
+  }
+
+  // ---- Stocks: one scorecard per holding, attention-first ----
+  var SD_CATS = [['Ownership', 'Owner'], ['Quality', 'Quality'], ['Valuation', 'Value'], ['Income', 'Income'], ['Trend', 'Trend']];
+  function renderStockCards(body) {
+    var cards = state.holdings.map(stockSignals).filter(function (s) { return s.items.length; });
+    if (!cards.length) {
+      body.innerHTML = '<div class="empty-note">Per-stock reads appear once fundamentals are fetched (once a day). Open a stock or tap <strong>Refresh</strong>, then check back.</div>';
+      return;
+    }
+    var tVal = totals().value;
+    cards.sort(function (a, b) { return a.worst - b.worst || (b.value - a.value); });
+    body.innerHTML = '<div class="att-cap">One card per holding · most to review first · tap for full detail</div>' +
+      cards.map(function (s) {
+      var wt = tVal ? s.value / tVal * 100 : 0, dcls = s.dayPct >= 0 ? 'up' : 'down';
+      var chips = SD_CATS.filter(function (c) { return s.byCat[c[0]]; }).map(function (c) {
+        return '<span class="sd-chip ' + s.byCat[c[0]].cls + '"><span class="cd"></span>' + c[1] + '</span>';
+      }).join('');
+      var posture = s.items.slice().sort(insSort).slice(0, 3).map(function (it) { return it.verb; }).join('; ');
+      return '<div class="scard" onclick="PG.openStockDetail(\'' + esc(s.sym) + '\')">' +
+        '<div class="scard-h"><span class="alloc-dot" style="background:' + sectorColor(s.sec) + '"></span>' +
+          '<span class="scard-sym">' + esc(s.sym) + '</span><span class="scard-wt">' + n1(wt) + '%</span>' +
+          '<span class="scard-day ' + dcls + '">' + (s.dayPct >= 0 ? '+' : '−') + Math.abs(s.dayPct).toFixed(1) + '%</span>' +
+          '<span class="scard-cr">›</span></div>' +
+        '<div class="scard-post">' + esc(posture) + '</div>' +
+        '<div class="sd-chips">' + chips + '</div></div>';
+    }).join('');
   }
 
   // ---- Insights view (all holdings, collapsible category tables, attention-first) ----
