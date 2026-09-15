@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v75';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v76';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -1472,7 +1472,8 @@
       var chips = SD_CATS.filter(function (c) { return s.byCat[c[0]]; }).map(function (c) {
         return '<span class="sd-chip ' + s.byCat[c[0]].cls + '"><span class="cd"></span>' + c[1] + '</span>';
       }).join('');
-      var posture = s.items.slice().sort(insSort).slice(0, 3).map(function (it) { return it.verb; }).join('; ');
+      var con = consolidateSignals(s.byCat);
+      var posture = con.label + (con.tail ? ' · ' + con.tail : '');
       return '<div class="scard" onclick="PG.openStockDetail(\'' + esc(s.sym) + '\')">' +
         '<div class="scard-h"><span class="alloc-dot" style="background:' + sectorColor(s.sec) + '"></span>' +
           '<span class="scard-sym">' + esc(s.sym) + '</span><span class="scard-wt">' + n1(wt) + '%</span>' +
@@ -2060,23 +2061,15 @@
       out.push({ cat: 'Ownership', cls: cls, verb: verb, vshort: verb, detail: d, mag: Math.abs(flow), fields: { fii: fq, dii: dq, sh: { promoter: sh.promoter || null, fii: sh.fii || null, dii: sh.dii || null } } });
     }
 
-    // Quality — returns on capital at the price paid (ROCE band × PE band). Skip financials & ETFs.
-    if (!isETF && !isFin && f.roce != null && f.pe != null && f.pe > 0) {
-      var q = f.roce, p = f.pe, clsQ = 'neutral', verbQ = 'Fair quality/price', vsQ = 'Fair';
-      if (q >= 20) {
-        if (p < 15) { clsQ = 'up'; verbQ = 'Quality on sale'; vsQ = 'On sale'; }
-        else if (p <= 30) { clsQ = 'up'; verbQ = 'Quality at a fair price'; vsQ = 'Quality'; }
-        else { clsQ = 'neutral'; verbQ = 'Quality, premium price'; vsQ = 'Premium'; }
-      } else if (q < 15) {
-        if (p > 30) { clsQ = 'down'; verbQ = 'Weak returns, pricey'; vsQ = 'Weak+pricey'; }
-        else if (p < 15) { clsQ = 'neutral'; verbQ = 'Cheap, low returns'; vsQ = 'Cheap/low RoC'; }
-        else { clsQ = 'neutral'; verbQ = 'Modest quality'; vsQ = 'Modest'; }
-      } else {
-        if (p > 35) { clsQ = 'down'; verbQ = 'Decent returns, pricey'; vsQ = 'Pricey'; }
-        else { clsQ = 'neutral'; verbQ = 'Decent quality'; vsQ = 'Decent'; }
-      }
-      var dQ = 'ROCE ' + n1(q) + '% · PE ' + n1(p) + '×' + (isCyc ? ' · cyclical (mid-cycle?)' : '');
-      out.push({ cat: 'Quality', cls: clsQ, verb: verbQ, vshort: vsQ, detail: dQ, mag: Math.abs(q - 17) + Math.abs(p - 22) / 4, fields: { roce: q, pe: p } });
+    // Quality — business returns on capital (ROCE, with ROE as backup). PRICE lives in Valuation
+    // (one metric, one home — methodology §1.2), so Quality answers only "how good is the business".
+    if (!isETF && !isFin && f.roce != null) {
+      var q = f.roce, clsQ, verbQ, vsQ;
+      if (q >= 20) { clsQ = 'up'; verbQ = 'High-quality returns'; vsQ = 'High quality'; }
+      else if (q >= 15) { clsQ = 'neutral'; verbQ = 'Decent returns on capital'; vsQ = 'Decent'; }
+      else { clsQ = 'down'; verbQ = 'Weak returns on capital'; vsQ = 'Weak'; }
+      var dQ = 'ROCE ' + n1(q) + '%' + (f.roe != null ? ' · ROE ' + n1(f.roe) + '%' : '') + (isCyc ? ' · cyclical (mid-cycle?)' : '');
+      out.push({ cat: 'Quality', cls: clsQ, verb: verbQ, vshort: vsQ, detail: dQ, mag: Math.abs(q - 17), fields: { roce: q, roe: (f.roe != null ? f.roe : null) } });
     }
 
     // Valuation — P/B vs ROE (primary) + earnings yield vs G-sec (fold-in / fallback)
@@ -2132,10 +2125,62 @@
     return out;
   }
 
+  // Consolidated top-line: combine the reads on TWO axes (business quality × price attractiveness)
+  // into one grounded posture label — the methodology-v2 quadrant (§1.4). Deliberately NOT a blended
+  // score (a great business dear and a poor one cheap must not average to the same "medium").
+  // Trend = timing, Ownership = who's buying, Income = context — layered on, never overriding.
+  function consolidateSignals(byCat) {
+    var q = byCat['Quality'], v = byCat['Valuation'], t = byCat['Trend'], o = byCat['Ownership'], inc = byCat['Income'];
+    // quality level: 2 strong / 1 ok / 0 weak / -1 unknown (bank fallback → ROE from Valuation fields)
+    var qL = -1, qNum = '';
+    if (q) { qL = q.cls === 'up' ? 2 : q.cls === 'down' ? 0 : 1; if (q.fields && q.fields.roce != null) qNum = 'ROCE ' + n1(q.fields.roce) + '%'; }
+    else if (v && v.fields && v.fields.roe != null) { var roe = v.fields.roe; qL = roe >= 16 ? 2 : roe >= 12 ? 1 : 0; qNum = 'ROE ' + n1(roe) + '%'; }
+    // valuation attractiveness: 2 cheap / 1 fair-or-mixed / 0 premium / -1 unknown
+    var vL = v ? (v.vshort === 'Cheap' ? 2 : v.vshort === 'Premium' ? 0 : 1) : -1;
+    var LAB = {
+      '2,2': ['Quality on sale', 'up'], '2,1': ['High quality, fair price', 'up'], '2,0': ['Quality but pricey', 'neutral'],
+      '1,2': ['Decent business, good price', 'up'], '1,1': ['Fairly valued', 'neutral'], '1,0': ['Decent business, rich price', 'neutral'],
+      '0,2': ['Cheap for a reason', 'neutral'], '0,1': ['Weak business, fair price', 'neutral'], '0,0': ['Weak and expensive', 'down']
+    };
+    var label, cls, lab = LAB[qL + ',' + vL];
+    if (lab) { label = lab[0]; cls = lab[1]; }
+    else if (vL >= 0) { label = vL === 2 ? 'Attractively priced' : vL === 0 ? 'Richly priced' : 'Fairly valued'; cls = vL === 2 ? 'up' : 'neutral'; }
+    else if (qL >= 0) { label = qL === 2 ? 'Strong business' : qL === 0 ? 'Weak business' : 'Decent business'; cls = qL === 2 ? 'up' : qL === 0 ? 'down' : 'neutral'; }
+    else { label = 'Limited data'; cls = 'neutral'; }
+    // rationale sentence from the two axes
+    var parts = [];
+    var qw = qL === 2 ? 'Strong returns on capital' : qL === 1 ? 'Decent returns on capital' : qL === 0 ? 'Weak returns on capital' : null;
+    if (qw) parts.push(qw + (qNum ? ' (' + qNum + ')' : ''));
+    var vw = vL === 2 ? 'attractively priced' : vL === 0 ? 'priced at a premium' : vL === 1 ? 'fairly priced' : null;
+    if (vw) {
+      var vh = '';
+      if (v && v.fields) {
+        if (v.fields.pb != null && v.fields.fairPB != null) vh = ' (P/B ' + n1(v.fields.pb) + '× vs ~' + n1(v.fields.fairPB) + '× fair)';
+        else if (v.fields.ey != null) vh = ' (' + n1(v.fields.ey) + '% earnings yield)';
+      }
+      parts.push((parts.length ? '' : 'A business ') + vw + vh);
+    }
+    var rationale = parts.join(', ') + (parts.length ? '.' : '');
+    // context tail (timing / flows / income)
+    var tail = [];
+    if (t && t.vshort) tail.push(t.vshort.toLowerCase());
+    if (o && (o.cls === 'up' || o.cls === 'down')) tail.push('institutions ' + (o.cls === 'up' ? 'accumulating' : 'trimming'));
+    if (inc && inc.cls === 'up' && inc.fields && inc.fields.dy != null) tail.push(n1(inc.fields.dy) + '% yield');
+    var have = ['Quality', 'Valuation', 'Trend', 'Ownership'].filter(function (c) { return byCat[c]; }).length;
+    return { label: label, cls: cls, rationale: rationale, tail: tail.join(' · '), conf: have >= 3 ? '' : 'based on limited data' };
+  }
+  function byCatOf(items) { var m = {}; items.forEach(function (it) { m[it.cat] = it; }); return m; }
+
   // Per-stock Insights block, grouped by category (attention-first within each).
   function insightsBlock(sym, px, sec) {
     var items = computeInsights(sym, px, sec);
     if (!items.length) return '';
+    var con = consolidateSignals(byCatOf(items));
+    var tailBits = [con.tail, con.conf].filter(Boolean).join(' · ');
+    var head = '<div class="sig-head ' + con.cls + '">' +
+      '<div class="sig-label">' + esc(con.label) + '</div>' +
+      (con.rationale ? '<div class="sig-rat">' + esc(con.rationale) + '</div>' : '') +
+      (tailBits ? '<div class="sig-tail">' + esc(tailBits) + '</div>' : '') + '</div>';
     var body = INS_CATS.map(function (c) {
       var g = items.filter(function (i) { return i.cat === c; }); if (!g.length) return '';
       g.sort(insSort);
@@ -2145,13 +2190,14 @@
     }).join('');
     var note = '<div class="ins-note" hidden>' +
       '<b>How these are read — observations, not advice:</b><br>' +
+      '<b>Overall</b> — the headline combines two axes: how good the business is (Quality) and how attractive the price is (Valuation), placing the stock in a posture like "quality on sale" or "weak business, fair price". Trend, ownership &amp; income are added as context, not overrides.<br>' +
       '<b>Ownership</b> — FII + DII stake change vs last quarter (and YoY). Up = institutions buying, down = trimming; a notable promoter change is flagged. If institutions move against the price (buying while it\'s below its 200-day average, or selling while above), that divergence is noted.<br>' +
-      '<b>Quality</b> — returns on capital (ROCE) against the price paid (PE). High ROCE at a modest PE = a good business at a fair price; high PE with low ROCE = expensive for the returns. Skipped for banks/NBFCs (ROCE isn\'t meaningful there).<br>' +
+      '<b>Quality</b> — the business\'s returns on capital (ROCE, with ROE as backup): ≥20% high, 15–20% decent, below weak. Price is judged separately under Valuation. Skipped for banks/NBFCs (ROCE isn\'t meaningful there).<br>' +
       '<b>Valuation</b> — a higher ROE justifies a higher price-to-book (fair ≈ ROE ÷ 12%); and the earnings yield (1 ÷ PE) is compared to the ~' + RF_YIELD + '% government-bond yield — above bonds = cheap on earnings, well below = priced for growth.<br>' +
       '<b>Income</b> — dividend yield; 4%+ is a meaningful cash return. Verify sustainability for cyclicals.<br>' +
       '<b>Trend</b> — price vs its 50 &amp; 200-day averages, whether the 50-day is above the 200-day (golden cross), and position within the 52-week range. Above both averages = uptrend.' +
       '</div>';
-    return '<div class="ins-block"><div class="ins-head">Signals<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + body + note + '</div>';
+    return '<div class="ins-block"><div class="ins-head">Signals<button class="fb-info" type="button" onclick="event.stopPropagation();PG.insInfo(this)" aria-label="How these are derived">ⓘ</button></div>' + head + body + note + '</div>';
   }
   function insInfo(btn) { var b = btn.closest('.ins-block'); if (!b) return; var n = b.querySelector('.ins-note'); if (n) n.hidden = !n.hidden; }
 
