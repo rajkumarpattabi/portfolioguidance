@@ -58,6 +58,7 @@ header{position:sticky;top:0;z-index:20;background:linear-gradient(#12151c,#1215
 .tg-legend .al{margin-left:auto}
 .tg-legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .tg-chart{margin-top:4px}
+.tg-svg{touch-action:none;-webkit-user-select:none;user-select:none}
 .tg-xlab{display:flex;justify-content:space-between;padding:2px 4px 0 46px;font-size:9.5px;color:var(--mut2);font-weight:600}
 .tg-seg{display:flex;gap:4px;background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:3px;margin:10px 2px 4px}
 .tg-seg button{flex:1;background:none;border:none;color:var(--mut);font-size:11px;font-weight:700;padding:6px 0;border-radius:6px;cursor:pointer}

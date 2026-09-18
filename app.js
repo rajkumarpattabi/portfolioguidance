@@ -11,7 +11,7 @@
   var WORKER = (CFG.WORKER_URL || '').replace(/\/+$/, '');
   var SEC = window.PG_SECTORS || { LIST: ['Unclassified'], MAP: {} };
   var FUND_VER = 5;   // must match FVER in the Worker; bump to invalidate on-device fundamentals cache
-  var APP_VER = 'v76';   // shown next to the header title; bump alongside the sw.js cache version
+  var APP_VER = 'v77';   // shown next to the header title; bump alongside the sw.js cache version
 
   var K = {
     holdings: 'PG_HOLDINGS',
@@ -236,6 +236,7 @@
     return h.slice(h.length - days);
   }
 
+  var trendGeo = null;   // geometry of the last-drawn trend chart, for the tap-to-inspect crosshair
   function renderTrend() {
     var p = el('trendPanel'); if (!p) return;
     if (!state.trendOpen || !state.holdings.length) { p.hidden = true; p.innerHTML = ''; return; }
@@ -255,6 +256,57 @@
     }
     p.innerHTML = trendChart(data) + seg +
       '<div class="tg-cap">Captured once per day from your live totals · stored on device + in backup</div>';
+    wireTrendScrub();
+  }
+
+  // Tap/drag anywhere on the trend chart → a vertical guide at the nearest day with a tooltip
+  // showing that day's Value, Invested and the gap (₹ and %). Lingers ~1s after release, then fades.
+  function wireTrendScrub() {
+    var p = el('trendPanel'); if (!p) return;
+    var svg = p.querySelector('.tg-svg'); if (!svg || !trendGeo) return;
+    var cross = svg.querySelector('#tgCross'); if (!cross) return;
+    var hideTimer = null;
+
+    function nearestIdx(clientX) {
+      var G = trendGeo, r = svg.getBoundingClientRect();
+      var vx = (clientX - r.left) / r.width * G.W;
+      var step = (G.W - G.padR - G.padL) / (G.n - 1 || 1);
+      var i = Math.round((vx - G.padL) / step);
+      return i < 0 ? 0 : i > G.n - 1 ? G.n - 1 : i;
+    }
+    function sMoney(n) { return (n >= 0 ? '+₹' : '−₹') + inr0.format(Math.abs(Math.round(n))); }
+    function draw(i) {
+      var G = trendGeo;
+      function X(k) { return G.padL + k * ((G.W - G.padR - G.padL) / (G.n - 1 || 1)); }
+      function Y(v) { return G.padT + (G.H - G.padT - G.padB) * (1 - (v - G.lo) / ((G.hi - G.lo) || 1)); }
+      var x = X(i), v = G.vals[i], iv = G.invs[i], yV = Y(v), yI = Y(iv);
+      var diff = v - iv, pct = iv ? diff / iv * 100 : 0, col = diff >= 0 ? '#34c789' : '#f26d6d';
+      var boxW = 128, boxH = 48, bx = Math.min(Math.max(x - boxW / 2, G.padL), G.W - G.padR - boxW), by = G.padT + 2;
+      cross.innerHTML =
+        '<line x1="' + x.toFixed(1) + '" y1="' + G.padT + '" x2="' + x.toFixed(1) + '" y2="' + (G.H - G.padB) + '" stroke="#8a92a3" stroke-width="1" stroke-dasharray="3 3"/>' +
+        '<circle cx="' + x.toFixed(1) + '" cy="' + yI.toFixed(1) + '" r="3.4" fill="#ffcf8f" stroke="#0d0f14" stroke-width="1.5"/>' +
+        '<circle cx="' + x.toFixed(1) + '" cy="' + yV.toFixed(1) + '" r="3.6" fill="#4da3ff" stroke="#0d0f14" stroke-width="1.5"/>' +
+        '<g transform="translate(' + bx.toFixed(1) + ',' + by.toFixed(1) + ')">' +
+        '<rect x="0" y="0" width="' + boxW + '" height="' + boxH + '" rx="6" fill="#0e1420" stroke="#2e3a4e" stroke-width="1"/>' +
+        '<text x="7" y="14" font-size="8.5" font-weight="700" fill="#8a92a3">' + esc(fmtDate(G.dates[i])) + '</text>' +
+        '<text x="7" y="27" font-size="9" fill="#e8ebf0">Val ₹' + inr0.format(Math.round(v)) + ' · Inv ₹' + inr0.format(Math.round(iv)) + '</text>' +
+        '<text x="7" y="41" font-size="10.5" font-weight="800" fill="' + col + '">' + sMoney(diff) + ' (' + (diff >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + '%)</text>' +
+        '</g>';
+      cross.style.display = '';
+    }
+    function show(e) {
+      // let a tap that lands directly on an action-marker hotspot do its own tooltip
+      if (e.target && e.target.tagName === 'circle' && e.target.getAttribute('onclick')) return;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      var cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+      draw(nearestIdx(cx)); e.preventDefault();
+    }
+    function fade() { if (hideTimer) clearTimeout(hideTimer); hideTimer = setTimeout(function () { cross.style.display = 'none'; cross.innerHTML = ''; hideTimer = null; }, 1000); }
+    svg.addEventListener('pointerdown', show);
+    svg.addEventListener('pointermove', function (e) { if (cross.style.display !== 'none') show(e); });
+    svg.addEventListener('pointerup', fade);
+    svg.addEventListener('pointercancel', fade);
+    svg.addEventListener('pointerleave', fade);
   }
 
   // Build the inline SVG chart from a window of {d, v, inv} rows.
@@ -351,15 +403,17 @@
       '<div class="tg-legend sub">' +
         '<span style="color:#ffcf8f">▲ you added</span>' +
         '<span style="color:#ffcf8f">▼ you reduced</span>' +
-        '<span class="al" style="color:#5f6b7e">tap a marker for date &amp; amount</span>' +
+        '<span class="al" style="color:#5f6b7e">tap the chart for any day’s gap</span>' +
       '</div>';
 
     // x labels: first, ~middle, last
     var xi = [0, Math.round((n - 1) / 2), n - 1];
     var xlab = '<div class="tg-xlab"><span>' + fmtDate(data[xi[0]].d) + '</span><span>' + fmtDate(data[xi[1]].d) + '</span><span>' + fmtDate(data[xi[2]].d) + '</span></div>';
 
+    trendGeo = { W: W, H: H, padL: padL, padR: padR, padT: padT, padB: padB, n: n, lo: lo, hi: hi,
+                 vals: vals, invs: invs, dates: data.map(function (r) { return r.d; }) };
     var svg =
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' +
+      '<svg class="tg-svg" viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' +
       '<defs>' +
       '<linearGradient id="tgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34c789" stop-opacity="0.44"/><stop offset="1" stop-color="#34c789" stop-opacity="0.05"/></linearGradient>' +
       '<linearGradient id="tgR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f26d6d" stop-opacity="0.06"/><stop offset="1" stop-color="#f26d6d" stop-opacity="0.42"/></linearGradient>' +
@@ -383,6 +437,7 @@
         '<text x="31" y="4" text-anchor="middle" font-size="10.5" font-weight="800" fill="' + brC + '">' + gapTxt + '</text>' +
       '</g>' +
       tip +
+      '<g id="tgCross" style="display:none;pointer-events:none"></g>' +
       '</svg>';
 
     return head + '<div class="tg-chart">' + svg + '</div>' + xlab;
